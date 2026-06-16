@@ -159,7 +159,7 @@ public class AiContentService {
             image.setFilePath(storedPath);
             image.setFileName("AI生成_" + (sectionTitle != null ? sectionTitle : "详情图") + ".png");
             image.setMimeType("image/png");
-            image.setFileSize(imageBytes.length);
+            image.setFileSize((long) imageBytes.length);
             image.setSortOrder(999); // 末尾
             image.setIsMain(0);
             productImageMapper.insert(image);
