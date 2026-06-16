@@ -1,0 +1,61 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mall-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-mall123456}
+      MYSQL_DATABASE: mall_content
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "3306:3306"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    container_name: mall-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: mall_content
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-mall123456}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key-in-production}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      STORAGE_ROOT: /app/storage
+      CORS_ORIGINS: "*"
+    volumes:
+      - storage_data:/app/storage
+    expose:
+      - "8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: mall-web
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  mysql_data:
+  storage_data:

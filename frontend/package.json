@@ -1,0 +1,38 @@
+{
+  "name": "mall-content-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.9",
+    "element-plus": "^2.9.1",
+    "pinia": "^2.3.0",
+    "sortablejs": "^1.15.6",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "vuedraggable": "^4.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-legacy": "^6.0.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "terser": "^5.37.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  },
+  "browserslist": [
+    "Chrome >= 64",
+    "Edge >= 79",
+    "Firefox >= 68",
+    "Safari >= 12",
+    "not dead"
+  ]
+}
