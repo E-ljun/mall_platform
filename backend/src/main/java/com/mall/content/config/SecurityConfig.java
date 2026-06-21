@@ -34,6 +34,7 @@ public class SecurityConfig {
                                 "/doc.html",
                                 "/webjars/**"
                         ).permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/admin/announcement").authenticated()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )

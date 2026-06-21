@@ -3,15 +3,21 @@ CREATE DATABASE IF NOT EXISTS mall_content DEFAULT CHARACTER SET utf8mb4 COLLATE
 USE mall_content;
 
 CREATE TABLE sys_user (
-    id            BIGINT PRIMARY KEY AUTO_INCREMENT,
-    username      VARCHAR(64)  NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    nickname      VARCHAR(64)  NOT NULL DEFAULT '',
-    role          VARCHAR(16)  NOT NULL DEFAULT 'USER' COMMENT 'USER | ADMIN',
-    status        TINYINT      NOT NULL DEFAULT 1 COMMENT '1=启用 0=禁用',
-    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted       TINYINT      NOT NULL DEFAULT 0
+    id              BIGINT PRIMARY KEY AUTO_INCREMENT,
+    username        VARCHAR(64)  NOT NULL UNIQUE,
+    password_hash   VARCHAR(255) NOT NULL,
+    nickname        VARCHAR(64)  NOT NULL DEFAULT '',
+    avatar          VARCHAR(512) DEFAULT NULL COMMENT '头像URL',
+    role            VARCHAR(16)  NOT NULL DEFAULT 'USER' COMMENT 'USER | ADMIN',
+    status          VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING=待审核 | ACTIVE=正常 | DISABLED=禁用',
+    quota_total     INT          NOT NULL DEFAULT 20 COMMENT '总AI生成配额(-1=不限)',
+    quota_used      INT          NOT NULL DEFAULT 0 COMMENT '已用AI生成次数',
+    permissions     JSON         DEFAULT NULL COMMENT '可用模块json数组，如["description","copy","image"]；null=全部',
+    approved_by     BIGINT       DEFAULT NULL COMMENT '审核人ID',
+    approved_at     DATETIME     DEFAULT NULL COMMENT '审核时间',
+    created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted         TINYINT      NOT NULL DEFAULT 0
 ) COMMENT '系统用户';
 
 CREATE TABLE product_category (
@@ -104,6 +110,25 @@ CREATE TABLE ai_generation_log (
     duration_ms   INT          DEFAULT NULL,
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) COMMENT 'AI 生成日志';
+
+CREATE TABLE user_quota_log (
+    id          BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id     BIGINT       NOT NULL,
+    change_by   BIGINT       DEFAULT NULL COMMENT '操作人ID(管理员)',
+    delta       INT          NOT NULL COMMENT '配额变化量(+增加 -扣减)',
+    reason      VARCHAR(256) DEFAULT NULL COMMENT '变动原因',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_quota_user (user_id)
+) COMMENT '用户配额变动日志';
+
+CREATE TABLE system_announcement (
+    id          BIGINT PRIMARY KEY AUTO_INCREMENT,
+    content     TEXT         NOT NULL,
+    created_by  BIGINT       NOT NULL,
+    is_active   TINYINT      NOT NULL DEFAULT 1,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) COMMENT '系统公告';
 
 INSERT INTO product_category (name, sort_order) VALUES
 ('数码家电', 1),

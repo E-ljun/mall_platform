@@ -66,9 +66,21 @@ public class ProductService {
         return product;
     }
 
+    /** 仅商品所有者可操作，管理员不可越权编辑/删除用户商品 */
+    public Product requireProductOwner(Long id, Authentication auth) {
+        Product product = productMapper.selectById(id);
+        if (product == null) {
+            throw new IllegalArgumentException("商品不存在");
+        }
+        if (!product.getUserId().equals((Long) auth.getPrincipal())) {
+            throw new IllegalStateException("管理员只能查看商品，不可编辑或删除用户商品");
+        }
+        return product;
+    }
+
     @Transactional
     public void deleteProduct(Long id, Authentication auth) {
-        requireAccessibleProduct(id, auth);
+        requireProductOwner(id, auth);
         List<ProductImage> images = productImageMapper.selectList(
                 new LambdaQueryWrapper<ProductImage>().eq(ProductImage::getProductId, id)
         );

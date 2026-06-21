@@ -17,8 +17,16 @@ public class SysUser {
     private String username;
     private String passwordHash;
     private String nickname;
+    private String phone;
+    private String email;
+    private String avatar;
     private String role;
-    private Integer status;
+    private String status; // PENDING | ACTIVE | DISABLED
+    private Integer quotaTotal; // -1=不限
+    private Integer quotaUsed;
+    private String permissions; // JSON数组字符串
+    private Long approvedBy;
+    private LocalDateTime approvedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

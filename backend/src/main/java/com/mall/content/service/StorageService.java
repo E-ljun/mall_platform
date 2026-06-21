@@ -125,6 +125,11 @@ public class StorageService {
 
     private String sanitizeFileName(String name) {
         if (name == null) return "image.jpg";
-        return name.replaceAll("[^a-zA-Z0-9._\\u4e00-\\u9fa5-]", "_");
+        // 去掉中文等非 ASCII 字符，只保留英文/数字/点/下划线/横线，避免 URL 编码问题
+        String safe = name.replaceAll("[^a-zA-Z0-9._-]", "_");
+        // 去重下划线
+        safe = safe.replaceAll("_+", "_");
+        if (safe.isBlank()) return "image.jpg";
+        return safe;
     }
 }

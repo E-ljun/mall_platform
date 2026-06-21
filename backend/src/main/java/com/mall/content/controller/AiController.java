@@ -94,6 +94,12 @@ public class AiController {
         return ApiResponse.ok(aiContentService.toggleFavorite(copyId, auth));
     }
 
+    @DeleteMapping("/marketing-copies/{copyId}")
+    public ApiResponse<Void> deleteCopy(@PathVariable Long copyId, Authentication auth) {
+        aiContentService.deleteCopy(copyId, auth);
+        return ApiResponse.ok(null);
+    }
+
     @GetMapping("/marketing-copies/{copyId}/export")
     public ResponseEntity<byte[]> exportCopy(
             @PathVariable Long copyId,
@@ -189,6 +195,75 @@ public class AiController {
         private String sectionCopy;
         private String visualDirection;
         private String aspectRatio;
+    }
+
+    /**
+     * 一键流水线：按顺序执行"商品描述 → 营销文案 → 详情图"。
+     * 前一步的输出作为后一步的输入，支持任意组合。
+     */
+    @PostMapping("/ai/products/{productId}/pipeline")
+    public ApiResponse<Map<String, Object>> pipeline(
+            @PathVariable Long productId,
+            @RequestBody PipelineRequest request,
+            Authentication auth
+    ) {
+        Map<String, Object> results = new java.util.LinkedHashMap<>();
+        List<String> steps = request.getSteps();
+        if (steps == null || steps.isEmpty()) {
+            return ApiResponse.fail("BAD_REQUEST", "请至少选择一个生成步骤");
+        }
+
+        // Step 1: 商品描述
+        ProductDescriptionResult desc = null;
+        if (steps.contains("description")) {
+            desc = aiContentService.generateProductDescription(
+                    productId, auth, request.getImageIds(), request.getKeywords());
+            results.put("description", desc);
+        }
+
+        // Step 2: 营销文案（可基于刚生成的描述）
+        if (steps.contains("copy")) {
+            MarketingPlatform platform = request.getPlatform() != null
+                    ? MarketingPlatform.valueOf(request.getPlatform().toUpperCase())
+                    : MarketingPlatform.XIAOHONGSHU;
+            int vc = request.getVariantCount() != null ? request.getVariantCount() : 3;
+            MarketingCopyResult copyResult = aiContentService.generateMarketingCopy(
+                    productId, auth, platform, vc);
+            results.put("copy", copyResult);
+            results.put("copyPlatform", platform.name());
+        }
+
+        // Step 3: 详情图（参考商品图片）
+        if (steps.contains("image")) {
+            ProductImage image = aiContentService.generateDetailImage(
+                    productId, auth,
+                    request.getImageSectionTitle(),
+                    request.getImageSectionCopy(),
+                    request.getImageVisualDirection(),
+                    request.getImageAspectRatio()
+            );
+            results.put("image", Map.of(
+                    "id", image.getId(),
+                    "url", storageService.toPublicUrl(image.getFilePath()),
+                    "fileName", image.getFileName() != null ? image.getFileName() : ""
+            ));
+        }
+
+        return ApiResponse.ok(results);
+    }
+
+    @Data
+    public static class PipelineRequest {
+        @NotEmpty
+        private List<String> steps; // description | copy | image
+        private List<Long> imageIds;
+        private String keywords;
+        private String platform;   // XIAOHONGSHU | TAOBAO | DOUYIN
+        private Integer variantCount;
+        private String imageSectionTitle;
+        private String imageSectionCopy;
+        private String imageVisualDirection;
+        private String imageAspectRatio;
     }
 
     @Data

@@ -1,7 +1,0 @@
-mall:
-  cors:
-    allowed-origin-patterns: ${CORS_ORIGINS:*}
-
-logging:
-  level:
-    com.mall.content: INFO

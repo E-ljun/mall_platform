@@ -32,6 +32,7 @@ public class ProductController {
     private final ProductImageMapper productImageMapper;
     private final ProductService productService;
     private final StorageService storageService;
+    private final com.mall.content.mapper.SysUserMapper sysUserMapper;
 
     @GetMapping
     public ApiResponse<Map<String, Object>> list(
@@ -45,8 +46,27 @@ public class ProductController {
             Authentication auth
     ) {
         Page<Product> result = productService.list(page, size, keyword, categoryId, minPrice, maxPrice, status, auth);
+        // 为每条记录附加创建者用户名
+        List<Map<String, Object>> records = result.getRecords().stream().map(p -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", p.getId());
+            m.put("name", p.getName());
+            m.put("price", p.getPrice());
+            m.put("stock", p.getStock());
+            m.put("categoryId", p.getCategoryId());
+            m.put("status", p.getStatus());
+            m.put("mainImageUrl", p.getMainImageUrl());
+            m.put("userId", p.getUserId());
+            m.put("shortTitle", p.getShortTitle());
+            m.put("detailContent", p.getDetailContent());
+            m.put("createdAt", p.getCreatedAt());
+            m.put("updatedAt", p.getUpdatedAt());
+            var creator = sysUserMapper.selectById(p.getUserId());
+            m.put("ownerUsername", creator != null ? creator.getUsername() : "未知");
+            return m;
+        }).toList();
         Map<String, Object> data = new HashMap<>();
-        data.put("records", result.getRecords());
+        data.put("records", records);
         data.put("total", result.getTotal());
         data.put("page", result.getCurrent());
         data.put("size", result.getSize());
@@ -92,7 +112,7 @@ public class ProductController {
 
     @PutMapping("/{id}")
     public ApiResponse<Product> update(@PathVariable Long id, @RequestBody ProductUpdateRequest request, Authentication auth) {
-        Product product = productService.requireAccessibleProduct(id, auth);
+        Product product = productService.requireProductOwner(id, auth);
         if (request.getName() != null) product.setName(request.getName());
         if (request.getPrice() != null) product.setPrice(request.getPrice());
         if (request.getCategoryId() != null) product.setCategoryId(request.getCategoryId());
@@ -204,6 +224,54 @@ public class ProductController {
     public static class BatchIdsRequest {
         @NotEmpty
         private List<Long> ids;
+    }
+
+    // ==================== 图片导出 ====================
+
+    @GetMapping("/images/{imageId}/export")
+    public org.springframework.http.ResponseEntity<byte[]> exportImage(@PathVariable Long imageId, Authentication auth) {
+        ProductImage image = productImageMapper.selectById(imageId);
+        if (image == null) {
+            throw new IllegalArgumentException("图片不存在");
+        }
+        productService.requireAccessibleProduct(image.getProductId(), auth);
+        byte[] bytes = storageService.readFile(image.getFilePath());
+        String mime = storageService.resolveMimeType(image.getFilePath());
+        String ext = image.getFileName() != null && image.getFileName().contains(".")
+                ? image.getFileName().substring(image.getFileName().lastIndexOf("."))
+                : ".jpg";
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"image-" + imageId + ext + "\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType(mime))
+                .body(bytes);
+    }
+
+    @PostMapping("/{id}/images/export-batch")
+    public org.springframework.http.ResponseEntity<byte[]> exportImagesBatch(
+            @PathVariable Long id,
+            @RequestBody BatchIdsRequest request,
+            Authentication auth
+    ) throws Exception {
+        productService.requireAccessibleProduct(id, auth);
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(baos)) {
+            for (Long imageId : request.getIds()) {
+                ProductImage image = productImageMapper.selectById(imageId);
+                if (image == null || !image.getProductId().equals(id)) continue;
+                byte[] bytes = storageService.readFile(image.getFilePath());
+                java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry(image.getFileName() != null ? image.getFileName() : "image-" + imageId + ".jpg");
+                zos.putNextEntry(entry);
+                zos.write(bytes);
+                zos.closeEntry();
+            }
+        }
+        String filename = java.net.URLEncoder.encode("product-" + id + "-images.zip", java.nio.charset.StandardCharsets.UTF_8);
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename*=UTF-8''" + filename)
+                .contentType(org.springframework.http.MediaType.parseMediaType("application/zip"))
+                .body(baos.toByteArray());
     }
 
     @Data

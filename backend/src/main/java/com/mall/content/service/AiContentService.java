@@ -14,9 +14,11 @@ import com.mall.content.domain.entity.AiGenerationLog;
 import com.mall.content.domain.entity.MarketingCopy;
 import com.mall.content.domain.entity.Product;
 import com.mall.content.domain.entity.ProductImage;
+import com.mall.content.domain.entity.SysUser;
 import com.mall.content.domain.enums.MarketingPlatform;
 import com.mall.content.mapper.AiGenerationLogMapper;
 import com.mall.content.mapper.MarketingCopyMapper;
+import com.mall.content.mapper.SysUserMapper;
 import com.mall.content.mapper.ProductImageMapper;
 import com.mall.content.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -36,16 +39,19 @@ public class AiContentService {
     private final ProductImageMapper productImageMapper;
     private final MarketingCopyMapper marketingCopyMapper;
     private final AiGenerationLogMapper aiGenerationLogMapper;
+    private final SysUserMapper sysUserMapper;
     private final AiChatClient aiClient;
     private final ObjectMapper objectMapper;
     private final StorageService storageService;
     private final MallProperties mallProperties;
     private final ProductService productService;
+    private final AdminService adminService;
 
     @Transactional
     public ProductDescriptionResult generateProductDescription(
             Long productId, Authentication auth, List<Long> imageIds, String keywords
     ) {
+        checkAiQuota(auth, "description");
         long start = System.currentTimeMillis();
         Long userId = (Long) auth.getPrincipal();
         Product product = productService.requireAccessibleProduct(productId, auth);
@@ -73,6 +79,7 @@ public class AiContentService {
             ProductDescriptionResult result = parseOrRepair(json, providerName, provider.getTextModel());
             persistDescription(product, result, keywords, json);
             logAi(userId, productId, "PRODUCT_DESC", null, model, "SUCCESS", keywords, null, start);
+            adminService.consumeQuota(userId);
             return result;
         } catch (Exception ex) {
             logAi(userId, productId, "PRODUCT_DESC", null, model, "FAILED", keywords, ex.getMessage(), start);
@@ -84,6 +91,7 @@ public class AiContentService {
     public MarketingCopyResult generateMarketingCopy(
             Long productId, Authentication auth, MarketingPlatform platform, int variantCount
     ) {
+        checkAiQuota(auth, "copy");
         long start = System.currentTimeMillis();
         Long userId = (Long) auth.getPrincipal();
         Product product = productService.requireAccessibleProduct(productId, auth);
@@ -106,7 +114,9 @@ public class AiContentService {
             );
             MarketingCopyResult result = aiClient.parseJson(json, MarketingCopyResult.class);
             persistMarketingCopies(productId, userId, platform, result);
+            trimCopies(productId, 3); // 每个商品最多保留 3 条文案
             logAi(userId, productId, "MARKETING_COPY", platform.name(), model, "SUCCESS", platform.label(), null, start);
+            adminService.consumeQuota(userId);
             return result;
         } catch (Exception ex) {
             logAi(userId, productId, "MARKETING_COPY", platform.name(), model, "FAILED", platform.label(), ex.getMessage(), start);
@@ -123,6 +133,7 @@ public class AiContentService {
             String sectionTitle, String sectionCopy,
             String visualDirection, String aspectRatio
     ) {
+        checkAiQuota(auth, "image");
         long start = System.currentTimeMillis();
         Long userId = (Long) auth.getPrincipal();
         Product product = productService.requireAccessibleProduct(productId, auth);
@@ -134,22 +145,49 @@ public class AiContentService {
             throw new IllegalStateException("当前 AI 服务商未配置图像生成模型。");
         }
 
+        // 加载商品参考图，传给 Wan 2.7 以确保生成图片与商品相关
+        List<ProductImage> productImages = productImageMapper.selectList(
+                new LambdaQueryWrapper<ProductImage>()
+                        .eq(ProductImage::getProductId, productId)
+                        .orderByAsc(ProductImage::getSortOrder)
+        );
+        List<String> refImages = new ArrayList<>();
+        for (ProductImage img : productImages) {
+            try {
+                byte[] bytes = storageService.readFile(img.getFilePath());
+                String b64 = "data:" + img.getMimeType() + ";base64,"
+                        + Base64.getEncoder().encodeToString(bytes);
+                refImages.add(b64);
+            } catch (Exception ignored) { /* 图片不可用则跳过 */ }
+        }
+
         String prompt = DetailImagePrompts.buildSectionImagePrompt(
                 product.getName(),
                 sectionTitle != null ? sectionTitle : "商品详情",
                 sectionCopy != null ? sectionCopy : product.getDetailContent(),
                 visualDirection != null ? visualDirection : "简洁高端电商风格，白底或浅色渐变背景，突出商品主体",
-                aspectRatio != null ? aspectRatio : "3:4"
+                aspectRatio != null ? aspectRatio : "3:4",
+                !refImages.isEmpty()
         );
 
         try {
-            String base64Image = aiClient.generateImage(providerName, model, prompt, "1024x1024", 1);
-            if (base64Image == null || base64Image.isBlank()) {
+            String rawResult = aiClient.generateImage(providerName, model, prompt, "1024x1024", 1, refImages);
+            if (rawResult == null || rawResult.isBlank()) {
                 throw new IllegalStateException("图像生成返回空数据，请稍后重试。");
             }
-            // 去掉可能的 data:...;base64, 前缀
-            String pureBase64 = base64Image.contains(",") ? base64Image.substring(base64Image.indexOf(",") + 1) : base64Image;
-            byte[] imageBytes = Base64.getDecoder().decode(pureBase64);
+
+            byte[] imageBytes;
+            if (rawResult.startsWith("http://") || rawResult.startsWith("https://")) {
+                // Wan 2.7 直接返回 OSS URL，下载图片字节
+                imageBytes = new java.net.URL(rawResult).openStream().readAllBytes();
+            } else if (rawResult.contains(",")) {
+                // data:image/png;base64,... 格式
+                String pureBase64 = rawResult.substring(rawResult.indexOf(",") + 1);
+                imageBytes = Base64.getDecoder().decode(pureBase64);
+            } else {
+                // 纯 base64
+                imageBytes = Base64.getDecoder().decode(rawResult);
+            }
 
             // 存到商品图片目录
             String storedPath = storageService.saveGeneratedImage(productId, imageBytes, "ai_gen_" + System.currentTimeMillis() + ".png");
@@ -177,6 +215,7 @@ public class AiContentService {
 
             logAi(userId, productId, "DETAIL_IMAGE", null, model, "SUCCESS",
                     "section=" + sectionTitle, null, start);
+            adminService.consumeQuota(userId);
             return image;
         } catch (Exception ex) {
             logAi(userId, productId, "DETAIL_IMAGE", null,
@@ -220,6 +259,33 @@ public class AiContentService {
         copy.setIsFavorite(copy.getIsFavorite() != null && copy.getIsFavorite() == 1 ? 0 : 1);
         marketingCopyMapper.updateById(copy);
         return copy;
+    }
+
+    @Transactional
+    public void deleteCopy(Long copyId, Authentication auth) {
+        MarketingCopy copy = marketingCopyMapper.selectById(copyId);
+        if (copy == null) {
+            throw new IllegalArgumentException("文案不存在");
+        }
+        productService.requireAccessibleProduct(copy.getProductId(), auth);
+        marketingCopyMapper.deleteById(copyId);
+    }
+
+    /**
+     * 清理超出限额的旧文案，保留最新的 maxCount 条。
+     */
+    @Transactional
+    public void trimCopies(Long productId, int maxCount) {
+        List<MarketingCopy> all = marketingCopyMapper.selectList(
+                new LambdaQueryWrapper<MarketingCopy>()
+                        .eq(MarketingCopy::getProductId, productId)
+                        .orderByDesc(MarketingCopy::getCreatedAt)
+        );
+        if (all.size() > maxCount) {
+            for (int i = maxCount; i < all.size(); i++) {
+                marketingCopyMapper.deleteById(all.get(i).getId());
+            }
+        }
     }
 
     private ProductDescriptionResult parseOrRepair(String json, String providerName, String textModel) {
@@ -279,6 +345,18 @@ public class AiContentService {
             throw new IllegalStateException("请至少选择一张商品图片");
         }
         return images;
+    }
+
+    private void checkAiQuota(Authentication auth, String module) {
+        Long userId = (Long) auth.getPrincipal();
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user != null && !adminService.canUseModule(user, module)) {
+            if (user.getQuotaTotal() != null && user.getQuotaTotal() != -1
+                    && user.getQuotaUsed() != null && user.getQuotaUsed() >= user.getQuotaTotal()) {
+                throw new IllegalStateException("AI 生成次数已用完，请联系管理员充值。");
+            }
+            throw new IllegalStateException("您没有使用该 AI 功能的权限，请联系管理员。");
+        }
     }
 
     private void logAi(Long userId, Long productId, String taskType, String platform,

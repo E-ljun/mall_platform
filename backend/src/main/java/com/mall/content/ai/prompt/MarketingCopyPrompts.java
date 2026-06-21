@@ -41,6 +41,13 @@ public final class MarketingCopyPrompts {
                     - 包含明确行动指令（点击/下单/领券）
                     - 句子短，节奏强，可带语气词
                     """;
+            case OTHER -> """
+                    平台风格：通用
+                    - 专业的电商商品介绍风格
+                    - 突出商品核心卖点与优势
+                    - 语言流畅自然，适合多平台分发
+                    - 结构清晰：引入→卖点→总结
+                    """;
         };
 
         return String.join("\n",
