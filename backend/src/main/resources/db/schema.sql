@@ -86,14 +86,17 @@ CREATE TABLE marketing_copy (
 ) COMMENT '营销文案';
 
 CREATE TABLE copy_library (
-    id         BIGINT PRIMARY KEY AUTO_INCREMENT,
-    user_id    BIGINT      NOT NULL,
-    title      VARCHAR(128) NOT NULL,
-    platform   VARCHAR(16) NOT NULL,
-    content    TEXT        NOT NULL,
-    tags       JSON        DEFAULT NULL,
-    created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted    TINYINT     NOT NULL DEFAULT 0,
+    id            BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id       BIGINT       NOT NULL,
+    title         VARCHAR(128) NOT NULL,
+    platform      VARCHAR(16)  NOT NULL,
+    group_name    VARCHAR(64)  NOT NULL DEFAULT '默认' COMMENT '分组名',
+    product_name  VARCHAR(128) DEFAULT NULL COMMENT '来源商品名',
+    product_image VARCHAR(512) DEFAULT NULL COMMENT '来源商品主图',
+    content       TEXT         NOT NULL,
+    tags          JSON         DEFAULT NULL,
+    created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted       TINYINT      NOT NULL DEFAULT 0,
     INDEX idx_library_user (user_id)
 ) COMMENT '文案库（加分项）';
 

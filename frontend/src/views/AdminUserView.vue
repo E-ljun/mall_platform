@@ -173,7 +173,7 @@ async function viewDetail(id: number) {
     const { data } = await http.get<ApiResponse<any>>(`/admin/users/${id}/detail`)
     detailUser.value = data.data
     detailVisible.value = true
-  } catch { /* handled */ }
+  } catch { ElMessage.error('获取用户详情失败') }
 }
 
 function statusLabel(s: string) {
@@ -261,11 +261,11 @@ onMounted(load)
 
 <style scoped>
 .admin-users { max-width: 1400px; }
-.admin-users h3 { margin-top: 0; }
-.sub { font-size: 13px; color: #999; font-weight: 400; }
+.admin-users h3 { margin-top: 0; color: var(--text-primary); font-family: var(--font-display); }
+.sub { font-size: 13px; color: var(--text-muted); font-weight: 400; }
 .mb { margin-bottom: 16px; }
-.filter-card { border-radius: 10px; }
-.user-table { border-radius: 10px; }
+.filter-card { border-radius: var(--radius-md); }
+.user-table { border-radius: var(--radius-md); }
 .actions { display: flex; flex-wrap: wrap; gap: 2px; }
 .pager { margin-top: 16px; justify-content: center; }
 </style>

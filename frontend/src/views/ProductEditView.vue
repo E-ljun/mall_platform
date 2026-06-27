@@ -164,12 +164,20 @@
 
           <!-- 营销文案 -->
           <el-collapse-item title="📢 多平台营销文案（单独，最多3条）" name="copy">
-            <el-radio-group v-model="platform" size="small">
-              <el-radio-button label="XIAOHONGSHU">小红书</el-radio-button>
-              <el-radio-button label="TAOBAO">淘宝</el-radio-button>
-              <el-radio-button label="DOUYIN">抖音</el-radio-button>
-              <el-radio-button label="OTHER">其它</el-radio-button>
-            </el-radio-group>
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+              <el-radio-group v-model="platform" size="small">
+                <el-radio-button label="XIAOHONGSHU">小红书</el-radio-button>
+                <el-radio-button label="TAOBAO">淘宝</el-radio-button>
+                <el-radio-button label="DOUYIN">抖音</el-radio-button>
+                <el-radio-button label="OTHER">其它</el-radio-button>
+              </el-radio-group>
+              <el-select v-model="scenario" size="small" clearable placeholder="营销场景（可选）" style="width:150px;">
+                <el-option label="618大促" value="618" />
+                <el-option label="双11狂欢" value="double11" />
+                <el-option label="新品首发" value="new_launch" />
+                <el-option label="清仓特卖" value="clearance" />
+              </el-select>
+            </div>
             <el-button type="primary" class="ml" :loading="copyLoading" @click="generateCopy(false)">生成</el-button>
             <el-button :loading="copyLoading" @click="generateCopy(true)">换一换</el-button>
             <span v-if="copies.length > 0" style="font-size:12px;color:#999;margin-left:8px;">已用 {{ copies.length }}/3</span>
@@ -191,6 +199,7 @@
                   </template>
                 </el-dropdown>
                 <el-button link type="danger" size="small" @click="deleteCopyItem(copy.id)">删除</el-button>
+                <el-button link type="success" size="small" @click="collectToLibrary(copy.id)">收藏到文库</el-button>
               </div>
               <el-input v-model="copy.title" placeholder="标题" size="small" class="mb" />
               <el-input v-model="copy.content" type="textarea" :rows="4" size="small" />
@@ -212,6 +221,9 @@
 
           <!-- 详情图 -->
           <el-collapse-item title="🎨 AI 详情图生成 Wan 2.7（单独）" name="image">
+            <p style="font-size:12px;color:#999;margin:0 0 8px;">
+              不会填？查看 <router-link to="/guide" style="color:#6c5ce7;font-weight:600;">📖 AI 出图指南</router-link>，六大风格模板可直接复制
+            </p>
             <el-form label-width="80px" size="small">
               <el-form-item label="模块标题">
                 <el-input v-model="imgGen.sectionTitle" placeholder="如：核心参数对比" />
@@ -220,7 +232,7 @@
                 <el-input v-model="imgGen.sectionCopy" type="textarea" :rows="2" placeholder="图中需包含的信息" />
               </el-form-item>
               <el-form-item label="画面描述">
-                <el-input v-model="imgGen.visualDirection" placeholder="如：科技感蓝黑背景，左侧参数表" />
+                <el-input v-model="imgGen.visualDirection" type="textarea" :rows="3" placeholder="如：科技感蓝黑背景，左侧参数表" />
               </el-form-item>
               <el-form-item label="比例">
                 <el-select v-model="imgGen.aspectRatio" style="width:100px">
@@ -230,8 +242,15 @@
                   <el-option label="9:16" value="9:16" />
                 </el-select>
               </el-form-item>
-              <el-button type="primary" :loading="imgLoading" @click="generateDetailImage">生成</el-button>
-              <el-button v-if="imgError" @click="generateDetailImage">重试</el-button>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <el-button type="primary" :loading="imgLoading" @click="generateDetailImage">生成</el-button>
+                <el-button v-if="imgError" @click="generateDetailImage">重试</el-button>
+                <el-button type="success" plain :loading="imgFillLoading" @click="autoFillDetailImage">
+                  ✨ 一键填写
+                </el-button>
+                <el-button @click="saveImgGenDraft" :loading="imgDraftSaving">💾 暂存草稿</el-button>
+                <span v-if="imgDraftSaved" style="font-size:12px;color:var(--success);">已暂存 ✓</span>
+              </div>
             </el-form>
             <div v-if="imgResultUrl" class="mt">
               <el-image :src="imgResultUrl" fit="contain" style="max-width:100%;max-height:300px;border-radius:8px;"
@@ -241,11 +260,65 @@
         </el-collapse>
       </el-col>
     </el-row>
+
+    <!-- Collect to library dialog: one-tap save like 不背单词 -->
+    <el-dialog v-model="collectVisible" title="收藏到文案库" width="420px" :close-on-click-modal="false">
+      <div v-loading="collectLoading" class="collect-group-list">
+        <!-- Default group -->
+        <button class="collect-group-btn" @click="doCollectTo('默认')">
+          <span class="collect-group-icon">📁</span>
+          <span class="collect-group-name">默认</span>
+          <span class="collect-group-arrow">›</span>
+        </button>
+
+        <!-- Existing groups -->
+        <button
+          v-for="g in collectGroups"
+          :key="g"
+          class="collect-group-btn"
+          @click="doCollectTo(g)"
+        >
+          <span class="collect-group-icon">📁</span>
+          <span class="collect-group-name">{{ g }}</span>
+          <span class="collect-group-arrow">›</span>
+        </button>
+
+        <!-- New group -->
+        <div class="collect-new-group">
+          <button
+            v-if="!showNewGroupInput"
+            class="collect-group-btn new-btn"
+            @click="showNewGroupInput = true"
+          >
+            <span class="collect-group-icon">➕</span>
+            <span class="collect-group-name">新建分组</span>
+          </button>
+          <div v-else class="new-group-input-row">
+            <el-input
+              ref="newGroupInputRef"
+              v-model="collectNewGroup"
+              placeholder="输入新分组名"
+              maxlength="20"
+              size="small"
+              @keyup.enter="doCollectTo(collectNewGroup)"
+            />
+            <el-button size="small" type="primary" @click="doCollectTo(collectNewGroup)" :disabled="!collectNewGroup.trim()">确定</el-button>
+            <el-button size="small" @click="showNewGroupInput = false; collectNewGroup = ''">取消</el-button>
+          </div>
+        </div>
+      </div>
+
+      <p class="collect-hint">点击分组即可立即收藏，无需二次确认</p>
+
+      <template #footer>
+        <el-button @click="collectVisible = false" :disabled="collectLoading">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
@@ -293,6 +366,7 @@ const images = ref<ImageItem[]>([])
 const sellingPoints = ref<string[]>([''])
 const keywords = ref('')
 const platform = ref('XIAOHONGSHU')
+const scenario = ref('')
 const copies = ref<CopyItem[]>([])
 const complianceWarnings = ref<string[]>([])
 const pageLoading = ref(false)
@@ -302,6 +376,21 @@ const imgLoading = ref(false)
 const descError = ref(false)
 const imgError = ref(false)
 const imgResultUrl = ref('')
+const imgDraftSaving = ref(false)
+const imgDraftSaved = ref(false)
+const imgFillLoading = ref(false)
+
+// Key prefix for localStorage image-gen drafts
+const IMG_DRAFT_PREFIX = 'imgGen_draft_'
+
+// Collect to library dialog state
+const collectVisible = ref(false)
+const collectLoading = ref(false)
+const collectCopyId = ref(0)
+const collectGroups = ref<string[]>([])
+const collectNewGroup = ref('')
+const showNewGroupInput = ref(false)
+const newGroupInputRef = ref()
 
 const imgGen = ref({
   sectionTitle: '',
@@ -349,6 +438,9 @@ async function load() {
     complianceWarnings.value = []
     imgResultUrl.value = ''
     pipelineResults.value = {}
+    // 加载已暂存的详情图表单草稿
+    loadImgGenDraft()
+    imgDraftSaved.value = false
   } finally {
     pageLoading.value = false
   }
@@ -462,6 +554,7 @@ async function generateDetailImage() {
   imgLoading.value = true
   imgError.value = false
   imgResultUrl.value = ''
+  let ok = false
   try {
     const { data } = await http.post<ApiResponse<any>>(`/ai/products/${productId.value}/detail-image`, {
       sectionTitle: imgGen.value.sectionTitle,
@@ -470,14 +563,82 @@ async function generateDetailImage() {
       aspectRatio: imgGen.value.aspectRatio,
     })
     imgResultUrl.value = data.data.url
+    clearImgGenDraft()
+    imgDraftSaved.value = false
     ElMessage.success('详情图已生成并存入图片库')
     userStore.refreshQuota()
-    await load()
+    ok = true
   } catch {
     imgError.value = true
+    ElMessage.error('详情图生成失败，请稍后重试')
   } finally {
     imgLoading.value = false
   }
+  // 生成完成后再刷新页面数据（后台执行，不阻塞 loading 状态）
+  if (ok) {
+    load().catch(() => {})
+  }
+}
+
+async function autoFillDetailImage() {
+  if (images.value.length === 0) {
+    ElMessage.warning('请先上传商品图片')
+    return
+  }
+  if (!product.value?.name || !product.value.name.trim()) {
+    ElMessage.warning('请先在左侧「基础信息」中填写商品名称（如"洗发水""手工皂""台灯"），否则 AI 可能识别错误')
+    return
+  }
+  imgFillLoading.value = true
+  try {
+    const { data } = await http.post<ApiResponse<any>>(
+      `/ai/products/${productId.value}/detail-image-suggestions`,
+      { imageIds: selectedImageIds.value.length > 0 ? selectedImageIds.value : undefined }
+    )
+    if (data.data) {
+      if (data.data.sectionTitle) imgGen.value.sectionTitle = data.data.sectionTitle
+      if (data.data.sectionCopy) imgGen.value.sectionCopy = data.data.sectionCopy
+      if (data.data.visualDirection) imgGen.value.visualDirection = data.data.visualDirection
+      ElMessage.success('AI 已根据商品图片填写表单，请检查并修改后生成')
+    }
+  } catch (err: any) {
+    const msg = err?.response?.data?.error?.message || err?.message || '分析失败'
+    ElMessage.error('一键填写失败：' + msg)
+  } finally {
+    imgFillLoading.value = false
+  }
+}
+
+// ---- 详情图表单草稿 ----
+function saveImgGenDraft() {
+  imgDraftSaving.value = true
+  try {
+    const key = IMG_DRAFT_PREFIX + productId.value
+    localStorage.setItem(key, JSON.stringify(imgGen.value))
+    imgDraftSaved.value = true
+    setTimeout(() => { imgDraftSaved.value = false }, 2000)
+  } finally {
+    imgDraftSaving.value = false
+  }
+}
+
+function loadImgGenDraft() {
+  try {
+    const key = IMG_DRAFT_PREFIX + productId.value
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const saved = JSON.parse(raw)
+      if (saved.sectionTitle) imgGen.value.sectionTitle = saved.sectionTitle
+      if (saved.sectionCopy) imgGen.value.sectionCopy = saved.sectionCopy
+      if (saved.visualDirection) imgGen.value.visualDirection = saved.visualDirection
+      if (saved.aspectRatio) imgGen.value.aspectRatio = saved.aspectRatio
+    }
+  } catch { /* ignore corrupt data */ }
+}
+
+function clearImgGenDraft() {
+  const key = IMG_DRAFT_PREFIX + productId.value
+  localStorage.removeItem(key)
 }
 
 // ==================== 一键流水线 ====================
@@ -488,20 +649,22 @@ async function runPipeline() {
   }
   pipelineRunning.value = true
   pipelineResults.value = {}
-  pipelineStepIndex.value = 0
+  pipelineStepIndex.value = -1
   pipelineMsg.value = '正在准备...'
 
-  const stepList = pipelineSteps.value
   const stepLabels: Record<string, string> = { description: '商品描述', copy: '营销文案', image: '详情图' }
+  const stepOrder = ['description', 'copy', 'image']
+  const token = localStorage.getItem('token')
 
-  for (let i = 0; i < stepList.length; i++) {
-    const step = stepList[i]
-    pipelineStepIndex.value = i
-    pipelineMsg.value = `正在生成 ${stepLabels[step]}...`
-
-    try {
-      const { data } = await http.post<ApiResponse<any>>(`/ai/products/${productId.value}/pipeline`, {
-        steps: [step],
+  try {
+    const response = await fetch(`/api/ai/products/${productId.value}/pipeline/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        steps: pipelineSteps.value,
         imageIds: selectedImageIds.value,
         keywords: keywords.value,
         platform: pipelinePlatform.value,
@@ -510,38 +673,94 @@ async function runPipeline() {
         imageSectionCopy: imgGen.value.sectionCopy || undefined,
         imageVisualDirection: imgGen.value.visualDirection || undefined,
         imageAspectRatio: imgGen.value.aspectRatio || '3:4',
-      })
+      }),
+    })
 
-      if (data.success) {
-        const result = data.data
-        pipelineResults.value[step] = result[step] || result
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
 
-        if (step === 'description' && result.description) {
-          product.value!.shortTitle = result.description.shortTitle || product.value!.shortTitle
-          product.value!.detailContent = result.description.detailContent || product.value!.detailContent
-          sellingPoints.value = result.description.sellingPoints || sellingPoints.value
-          complianceWarnings.value = result.description.complianceWarnings || []
-        }
-        if (step === 'copy') {
-          const copyRes = await http.get<ApiResponse<CopyItem[]>>(`/products/${productId.value}/marketing-copies`)
-          copies.value = (copyRes.data.data || []).filter((c) => c.platform === pipelinePlatform.value)
-        }
-        if (step === 'image') {
-          await load()
-          imgResultUrl.value = result.image?.url || result.url || ''
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // 解析 SSE 事件
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || '' // 保留不完整的行
+      let eventName = ''
+      let eventData = ''
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventName = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          eventData = line.slice(6).trim()
+        } else if (line === '' && eventName && eventData) {
+          handleSSEEvent(eventName, eventData, stepLabels, stepOrder)
+          eventName = ''
+          eventData = ''
         }
       }
-    } catch (err: any) {
-      pipelineMsg.value = `${stepLabels[step]} 失败：${err.response?.data?.error?.message || err.message || '未知错误'}`
-      ElMessage.error(`${stepLabels[step]} 失败`)
     }
+  } catch (err: any) {
+    ElMessage.error(`流水线执行失败：${err.message || '网络错误'}`)
+  } finally {
+    pipelineRunning.value = false
+    pipelineStepIndex.value = pipelineSteps.value.length
+    pipelineMsg.value = '全部完成！'
+    userStore.refreshQuota()
   }
+}
 
-  pipelineStepIndex.value = stepList.length
-  pipelineMsg.value = '全部完成！'
-  pipelineRunning.value = false
-  userStore.refreshQuota()
-  ElMessage.success('组合生成完成')
+function handleSSEEvent(
+  eventName: string,
+  eventData: string,
+  stepLabels: Record<string, string>,
+  stepOrder: string[]
+) {
+  if (eventName === 'progress') {
+    try {
+      const evt = JSON.parse(eventData)
+      const step = evt.step as string
+      const stepIdx = stepOrder.indexOf(step)
+
+      if (evt.status === 'running') {
+        pipelineStepIndex.value = stepIdx
+        pipelineMsg.value = `正在生成 ${stepLabels[step]}...`
+      } else if (evt.status === 'done') {
+        pipelineResults.value[step] = evt.result || true
+
+        if (step === 'description' && evt.result) {
+          product.value!.shortTitle = evt.result.shortTitle || product.value!.shortTitle
+          product.value!.detailContent = evt.result.detailContent || product.value!.detailContent
+          sellingPoints.value = evt.result.sellingPoints || sellingPoints.value
+          complianceWarnings.value = evt.result.complianceWarnings || []
+        }
+        if (step === 'copy') {
+          // 异步刷新文案列表
+          http.get<ApiResponse<CopyItem[]>>(`/products/${productId.value}/marketing-copies`).then(res => {
+            copies.value = (res.data.data || []).filter((c: CopyItem) => c.platform === pipelinePlatform.value)
+          }).catch(() => {})
+        }
+        if (step === 'image') {
+          imgResultUrl.value = evt.result?.url || ''
+          load().catch(() => {})
+        }
+      } else if (evt.status === 'failed') {
+        pipelineMsg.value = `${stepLabels[step]} 失败：${evt.error || '未知错误'}`
+        ElMessage.error(`${stepLabels[step]} 生成失败`)
+      }
+    } catch { /* JSON 解析失败，忽略 */ }
+  } else if (eventName === 'complete') {
+    ElMessage.success('组合生成完成')
+  } else if (eventName === 'error') {
+    ElMessage.error(`流水线错误：${eventData}`)
+  }
 }
 
 async function generateDescription() {
@@ -564,6 +783,7 @@ async function generateDescription() {
     userStore.refreshQuota()
   } catch {
     descError.value = true
+    ElMessage.error('商品描述生成失败，请检查图片和关键词后重试')
   } finally {
     descLoading.value = false
   }
@@ -575,18 +795,25 @@ async function generateCopy(isRetry: boolean) {
     return
   }
   copyLoading.value = true
+  let ok = false
   try {
     await http.post(`/ai/products/${productId.value}/marketing-copy`, {
       platform: platform.value,
       variantCount: isRetry ? 3 : 1,
+      scenario: scenario.value || undefined,
     })
     ElMessage.success(isRetry ? '已重新生成' : '营销文案已生成')
     userStore.refreshQuota()
-    const { data } = await http.get<ApiResponse<CopyItem[]>>(`/products/${productId.value}/marketing-copies`)
-    // 仅显示当前产品、当前平台的文案
-    copies.value = (data.data || []).filter((c) => c.platform === platform.value)
+    ok = true
   } finally {
     copyLoading.value = false
+  }
+  // 生成完成后再刷新文案列表（后台执行）
+  if (ok) {
+    try {
+      const { data } = await http.get<ApiResponse<CopyItem[]>>(`/products/${productId.value}/marketing-copies`)
+      copies.value = (data.data || []).filter((c) => c.platform === platform.value)
+    } catch { /* ignore */ }
   }
 }
 
@@ -606,6 +833,48 @@ async function deleteCopyItem(id: number) {
   ElMessage.success('文案已删除')
   copies.value = copies.value.filter((c) => c.id !== id)
 }
+
+async function collectToLibrary(copyId: number) {
+  collectCopyId.value = copyId
+  collectNewGroup.value = ''
+  showNewGroupInput.value = false
+  collectVisible.value = true
+  // 异步加载分组列表
+  try {
+    const { data } = await http.get<ApiResponse<string[]>>('/library/groups')
+    collectGroups.value = (data.data || []).filter(g => g !== '默认')
+  } catch (err: any) {
+    console.error('加载分组失败:', err)
+    collectGroups.value = []
+  }
+}
+
+async function doCollectTo(groupName: string) {
+  const name = (groupName || '').trim()
+  if (!name) {
+    ElMessage.warning('请输入分组名称')
+    return
+  }
+  collectLoading.value = true
+  try {
+    await http.post('/library', { copyId: collectCopyId.value, groupName: name })
+    ElMessage.success(`已收藏到「${name}」`)
+    collectVisible.value = false
+  } catch (err: any) {
+    const msg = err?.response?.data?.error?.message || err?.message || '请稍后重试'
+    ElMessage.error('收藏失败：' + msg)
+  } finally {
+    collectLoading.value = false
+  }
+}
+
+// 展开新建分组输入框时自动聚焦
+watch(showNewGroupInput, async (val) => {
+  if (val) {
+    await nextTick()
+    newGroupInputRef.value?.focus?.()
+  }
+})
 
 async function exportCopy(id: number, format: string) {
   const res = await http.get(`/marketing-copies/${id}/export`, {
@@ -641,33 +910,143 @@ async function exportBatch(format: string) {
 </script>
 
 <style scoped>
-.page { padding: 8px; }
+.page { padding: 8px; max-width: 1400px; }
+
+/* Override page header */
+.page :deep(.el-page-header__content) {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.page :deep(.el-page-header__back) {
+  color: var(--text-muted);
+}
+
 .mt { margin-top: 16px; }
 .mb { margin-bottom: 8px; }
 .ml { margin-left: 8px; }
+
 .selling-points { width: 100%; }
-.sp-row { display: flex; margin-bottom: 8px; }
-.sp-row > * + * { margin-left: 8px; }
+.sp-row { display: flex; margin-bottom: 8px; gap: 8px; }
 .image-grid { display: flex; flex-wrap: wrap; margin: 10px -6px -6px -6px; }
-.img-card { width: 120px; text-align: center; margin: 6px; }
+.img-card {
+  width: 120px; text-align: center; margin: 6px;
+  background: rgba(0,0,0,0.02);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+}
 .thumb { width: 120px; height: 120px; border-radius: 6px; }
-.copy-item { margin-top: 16px; padding-top: 16px; border-top: 1px solid #eee; }
-.copy-head { display: flex; align-items: center; flex-wrap: wrap; margin: -4px; margin-bottom: 4px; }
+
+.copy-item {
+  margin-top: 16px; padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: rgba(0,0,0,0.02);
+}
+.copy-head { display: flex; align-items: center; flex-wrap: wrap; margin: -4px; margin-bottom: 8px; }
 .copy-head > * { margin: 4px; }
 
-.pipeline-card { border-radius: 12px; border: 2px solid #667eea; background: linear-gradient(to bottom, #fafbff, #fff); }
+/* Pipeline card — the core feature */
+.pipeline-card {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid rgba(196,155,74,0.25) !important;
+  background: linear-gradient(135deg, rgba(196,155,74,0.04), rgba(94,138,138,0.03)) !important;
+  box-shadow: 0 0 30px rgba(196,155,74,0.05);
+}
 .pipeline-steps { margin-bottom: 12px; }
 .step-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  border-radius: 8px; margin-bottom: 4px; transition: background 0.2s;
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-radius: var(--radius-md); margin-bottom: 4px;
+  transition: all 0.25s var(--ease-out);
+  border: 1px solid transparent;
 }
-.step-row.active { background: #f0f2ff; }
-.step-label { font-weight: 600; font-size: 14px; min-width: 90px; }
-.step-hint { font-size: 12px; color: #999; flex: 1; }
-.pipeline-params { margin-bottom: 12px; padding: 8px 0; display: flex; align-items: center; }
-.pipeline-btn { width: 100%; height: 44px; font-size: 16px; margin-top: 4px; }
-.pipeline-progress { margin-top: 16px; padding-top: 16px; border-top: 1px solid #eee; }
-.progress-msg { text-align: center; color: #667eea; font-size: 13px; margin-top: 8px; }
-.result-preview { padding: 8px 12px; background: #f5f7fa; border-radius: 8px; font-size: 13px; }
-.result-preview p { margin: 4px 0; }
+.step-row.active {
+  background: rgba(196,155,74,0.06);
+  border-color: rgba(196,155,74,0.15);
+}
+.step-label { font-weight: 600; font-size: 14px; min-width: 90px; color: var(--text-primary); }
+.step-hint { font-size: 12px; color: var(--text-muted); flex: 1; }
+.pipeline-params { margin-bottom: 12px; padding: 8px 0; display: flex; align-items: center; color: var(--text-secondary); }
+.pipeline-btn { width: 100%; height: 44px; font-size: 16px; margin-top: 4px; border-radius: var(--radius-md); }
+.pipeline-progress { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-subtle); }
+.pipeline-progress :deep(.el-step__title) { color: var(--text-secondary) !important; font-size: 12px; }
+.pipeline-progress :deep(.el-step__title.is-process) { color: var(--accent) !important; }
+.pipeline-progress :deep(.el-step__title.is-finish) { color: var(--success) !important; }
+.progress-msg { text-align: center; color: var(--accent); font-size: 13px; margin-top: 8px; }
+.result-preview {
+  padding: 12px 16px; background: rgba(0,0,0,0.03);
+  border-radius: var(--radius-md); font-size: 13px;
+  border: 1px solid var(--border-subtle);
+}
+.result-preview p { margin: 4px 0; color: var(--text-secondary); }
+.result-preview strong { color: var(--text-primary); }
+
+/* Collapse */
+.page :deep(.el-collapse-item__header) {
+  color: var(--text-primary);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.page :deep(.el-collapse-item__wrap) {
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.page :deep(.el-collapse-item__content) {
+  color: var(--text-secondary);
+}
+
+/* Alert */
+.page :deep(.el-alert--warning) {
+  background: rgba(212,164,74,0.08);
+  border: 1px solid rgba(212,164,74,0.2);
+}
+
+/* Collect dialog — "不背单词" style group list */
+.collect-group-list {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.collect-group-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 14px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-size: 15px; font-family: inherit;
+  transition: all 0.2s var(--ease-out);
+  text-align: left; color: var(--text-primary);
+}
+.collect-group-btn:hover {
+  border-color: rgba(196,155,74,0.4);
+  background: rgba(196,155,74,0.04);
+  transform: translateX(4px);
+}
+.collect-group-btn:active { transform: scale(0.98); }
+.collect-group-icon { font-size: 20px; flex-shrink: 0; }
+.collect-group-name { flex: 1; font-weight: 500; }
+.collect-group-arrow {
+  font-size: 22px; color: var(--text-muted);
+  font-weight: 300; flex-shrink: 0;
+}
+.collect-group-btn.new-btn {
+  border-style: dashed; color: var(--accent);
+  justify-content: flex-start;
+}
+.collect-group-btn.new-btn:hover {
+  border-color: var(--accent);
+  background: rgba(196,155,74,0.06);
+}
+.collect-group-btn.new-btn .collect-group-arrow { display: none; }
+.new-group-input-row {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 12px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: rgba(196,155,74,0.03);
+}
+.collect-hint {
+  margin: 16px 0 0; font-size: 12px;
+  color: var(--text-muted); text-align: center;
+}
 </style>

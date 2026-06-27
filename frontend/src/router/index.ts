@@ -8,6 +8,11 @@ import ProfileView from '../views/ProfileView.vue'
 import AdminDashboardView from '../views/AdminDashboardView.vue'
 import AdminUserView from '../views/AdminUserView.vue'
 import AdminProductView from '../views/AdminProductView.vue'
+import AdminStatsView from '../views/AdminStatsView.vue'
+import AdminRecycleBinView from '../views/AdminRecycleBinView.vue'
+import RecycleBinView from '../views/RecycleBinView.vue'
+import LibraryView from '../views/LibraryView.vue'
+import GuideView from '../views/GuideView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,10 +26,15 @@ const router = createRouter({
         { path: 'dashboard', component: DashboardView },
         { path: 'products', component: ProductListView },
         { path: 'products/:id/edit', component: ProductEditView },
+        { path: 'library', component: LibraryView },
+        { path: 'guide', component: GuideView },
+        { path: 'recycle-bin', component: RecycleBinView },
         { path: 'profile', component: ProfileView },
         { path: 'admin/dashboard', component: AdminDashboardView, meta: { admin: true } },
         { path: 'admin/users', component: AdminUserView, meta: { admin: true } },
         { path: 'admin/products', component: AdminProductView, meta: { admin: true } },
+        { path: 'admin/stats', component: AdminStatsView, meta: { admin: true } },
+        { path: 'admin/recycle-bin', component: AdminRecycleBinView, meta: { admin: true } },
       ],
     },
   ],

@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -107,6 +108,28 @@ public class AdminController {
         info.put("createdAt", user.getCreatedAt() != null ? user.getCreatedAt().toString() : "");
         info.put("quotaLogs", logs);
         return ApiResponse.ok(info);
+    }
+
+    // ==================== 回收站 ====================
+
+    @GetMapping("/recycle-bin/products")
+    public ApiResponse<Map<String, Object>> recycleBinProducts(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ApiResponse.ok(adminService.listDeletedProducts(page, size));
+    }
+
+    @PostMapping("/recycle-bin/products/{id}/restore")
+    public ApiResponse<?> restoreProduct(@PathVariable Long id) {
+        adminService.restoreProduct(id);
+        return ApiResponse.ok(null);
+    }
+
+    @DeleteMapping("/recycle-bin/products/{id}")
+    public ApiResponse<?> purgeProduct(@PathVariable Long id) {
+        adminService.purgeProduct(id);
+        return ApiResponse.ok(null);
     }
 
     // ==================== DTO ====================

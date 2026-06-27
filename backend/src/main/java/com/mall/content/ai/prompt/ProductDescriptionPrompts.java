@@ -19,7 +19,8 @@ public final class ProductDescriptionPrompts {
               "styleTags": ["风格标签"],
               "targetAudience": ["目标人群"],
               "usageScenarios": ["使用场景"],
-              "complianceWarnings": ["若存在夸大宣传风险则列出，否则空数组"]
+              "complianceWarnings": ["若存在夸大宣传风险则列出，否则空数组"],
+              "imageTextDensity": "minimal/moderate/rich三选一"
             }
             """;
 
@@ -51,6 +52,12 @@ public final class ProductDescriptionPrompts {
                 "图片资产：",
                 assetBlock,
                 imageBase64List.isEmpty() ? "（未附带图片 base64，请仅依据资产描述推断）" : "（已附带 " + imageBase64List.size() + " 张图片供多模态分析）",
+                "",
+                "此外，请判断该商品适合在营销详情图上放置多少文字：",
+                "- minimal：商品外观即核心卖点（如服装、珠宝、家居装饰），只需1-2句点睛文案",
+                "- moderate：需要适度说明（如电子产品、护肤品），3-4条要点即可",
+                "- rich：功能复杂需详细标注（如家电参数、食品成分），适合较多文字说明",
+                "将判断结果填入 imageTextDensity 字段。",
                 "",
                 "返回 JSON 结构：",
                 OUTPUT_SHAPE

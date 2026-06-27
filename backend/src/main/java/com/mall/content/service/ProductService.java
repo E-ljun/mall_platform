@@ -1,6 +1,7 @@
 package com.mall.content.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -211,5 +212,39 @@ public class ProductService {
 
     public boolean isAdmin(Authentication auth) {
         return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+
+    // ==================== 回收站（用户端） ====================
+
+    public Page<Product> listUserDeletedProducts(Long userId, int page, int size) {
+        Page<Product> pg = new Page<>(page, size);
+        if (userId == null) {
+            return productMapper.selectAllDeleted(pg);
+        }
+        return productMapper.selectDeletedByUserId(pg, userId);
+    }
+
+    @Transactional
+    public void restoreUserProduct(Long userId, Long productId, boolean isAdmin) {
+        Product product = productMapper.selectDeletedById(productId);
+        if (product == null) throw new IllegalArgumentException("商品不存在或不在回收站中");
+        if (!isAdmin && !product.getUserId().equals(userId)) throw new IllegalStateException("无权操作");
+        productMapper.restoreDeleted(productId);
+    }
+
+    @Transactional
+    public void purgeUserProduct(Long userId, Long productId, boolean isAdmin) {
+        Product product = productMapper.selectDeletedById(productId);
+        if (product == null) throw new IllegalArgumentException("商品不存在或不在回收站中");
+        if (!isAdmin && !product.getUserId().equals(userId)) throw new IllegalStateException("无权操作");
+        // 物理删除图片
+        List<ProductImage> images = productImageMapper.selectList(
+                new LambdaQueryWrapper<ProductImage>().eq(ProductImage::getProductId, productId));
+        for (ProductImage img : images) {
+            try { storageService.deleteFile(img.getFilePath()); } catch (Exception ignored) {}
+            productImageMapper.deleteById(img.getId());
+        }
+        // 物理删除商品
+        productMapper.deletePhysically(productId);
     }
 }

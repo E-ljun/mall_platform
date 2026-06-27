@@ -1,5 +1,6 @@
 package com.mall.content.service;
 
+import com.mall.content.config.MallProperties;
 import com.mall.content.domain.entity.MarketingCopy;
 import com.mall.content.domain.enums.MarketingPlatform;
 import com.mall.content.mapper.MarketingCopyMapper;
@@ -19,6 +20,7 @@ import java.util.List;
 public class ExportService {
 
     private final MarketingCopyMapper marketingCopyMapper;
+    private final MallProperties mallProperties;
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
@@ -58,44 +60,33 @@ public class ExportService {
             hashtags = copy.getHashtags().replace("[", "").replace("]", "").replace("\"", "");
         }
 
-        String title = escapeHtml(copy.getTitle() != null ? copy.getTitle() : "营销文案");
-        String content = escapeHtml(copy.getContent() != null ? copy.getContent() : "");
-        String contentHtml = content.replace("\n", "<br/>");
-        String tagsHtml = escapeHtml(hashtags).replace(",", "&nbsp;&nbsp;");
+        String title = copy.getTitle() != null ? copy.getTitle() : "营销文案";
+        String content = copy.getContent() != null ? copy.getContent() : "";
 
-        String html = """
-                <!DOCTYPE html>
-                <html lang="zh-CN">
-                <head><meta charset="UTF-8">
-                <style>
-                  @page { size: A4; margin: 2cm; }
-                  body { font-family: "SimSun", "Microsoft YaHei", "PingFang SC", sans-serif; font-size: 14px; line-height: 1.8; color: #333; }
-                  .header { border-bottom: 3px solid #1677ff; padding-bottom: 16px; margin-bottom: 24px; }
-                  .platform { display: inline-block; background: #1677ff; color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 12px; margin-bottom: 12px; }
-                  h1 { font-size: 22px; margin: 12px 0 8px; color: #111; }
-                  .content { font-size: 15px; margin: 20px 0; }
-                  .tags { margin-top: 20px; padding: 12px; background: #f5f7fa; border-radius: 6px; color: #666; font-size: 13px; }
-                  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #eee; font-size: 12px; color: #999; }
-                </style></head>
-                <body>
-                  <div class="header">
-                    <div class="platform">%s</div>
-                    <h1>%s</h1>
-                  </div>
-                  <div class="content">%s</div>
-                  %s
-                  <div class="footer">导出时间：%s &nbsp;|&nbsp; 智能商品详情与营销文案生成系统</div>
-                </body>
-                </html>
-                """.formatted(
-                escapeHtml(platformLabel), title, contentHtml,
-                tagsHtml.isEmpty() ? "" : "<div class=\"tags\"><strong>标签：</strong>" + tagsHtml + "</div>",
-                copy.getUpdatedAt() != null ? copy.getUpdatedAt().format(DATE_FMT) : ""
-        );
+        String html = buildPdfHtml(platformLabel, title, content, hashtags,
+                copy.getUpdatedAt() != null ? copy.getUpdatedAt().format(DATE_FMT) : "");
 
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+
+            // 加载中文字体（从配置读取路径）
+            String[] fontPaths = mallProperties.getPdf().getFontPaths().split(",");
+            String fontFamily = mallProperties.getPdf().getFontFamily();
+            boolean fontLoaded = false;
+            for (String fp : fontPaths) {
+                java.io.File f = new java.io.File(fp.trim());
+                if (f.exists()) {
+                    builder.useFont(f, fontFamily);
+                    fontLoaded = true;
+                    break;
+                }
+            }
+            if (!fontLoaded) {
+                // 尝试用系统默认，中文可能乱码但至少不报错
+                builder.useFont(new java.io.File("."), fontFamily);
+            }
+
             builder.withHtmlContent(html, null);
             builder.toStream(os);
             builder.run();
@@ -103,6 +94,52 @@ public class ExportService {
         } catch (Exception e) {
             throw new IllegalStateException("PDF 生成失败: " + e.getMessage(), e);
         }
+    }
+
+    private String buildPdfHtml(String platformLabel, String title, String content, String hashtags, String dateStr) {
+        String safePlatform = escapeHtml(platformLabel);
+        String safeTitle = escapeHtml(title);
+        String contentHtml = escapeHtml(content).replace("\n", "<br/>");
+        String tagsStr = escapeHtml(hashtags).replace(",", "&#160;&#160;");
+
+        String color = "#1677ff";
+        if ("XIAOHONGSHU".equalsIgnoreCase(platformLabel)) color = "#ff4757";
+        else if ("TAOBAO".equalsIgnoreCase(platformLabel)) color = "#ff6b35";
+        else if ("DOUYIN".equalsIgnoreCase(platformLabel)) color = "#00d4aa";
+
+        return """
+                <!DOCTYPE html>
+                <html lang="zh-CN">
+                <head><meta charset="UTF-8"/>
+                <style>
+                  @page { size: A4; margin: 2cm 2.2cm; }
+                  body { font-family: "%s", sans-serif; font-size: 14px; line-height: 2; color: #222; }
+                  .header { border-bottom: 3px solid %s; padding-bottom: 18px; margin-bottom: 28px; }
+                  .badge { display: inline-block; background: %s; color: #fff; padding: 4px 14px; border-radius: 4px; font-size: 12px; margin-bottom: 14px; }
+                  h1 { font-size: 24px; margin: 14px 0 6px; color: #111; letter-spacing: 1px; }
+                  .content { font-size: 15px; margin: 24px 0; }
+                  .tags { margin-top: 24px; padding: 14px 16px; background: #f5f7fa; border-radius: 8px; color: #555; font-size: 13px; }
+                  .tags strong { color: #333; }
+                  .footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid #ddd; font-size: 12px; color: #999; }
+                  .footer span { margin: 0 6px; }
+                </style></head>
+                <body>
+                  <div class="header">
+                    <div class="badge">%s</div>
+                    <h1>%s</h1>
+                  </div>
+                  <div class="content">%s</div>
+                  %s
+                  <div class="footer"><span>导出时间：%s</span> <span>|</span> <span>智能商品详情与营销文案生成系统</span></div>
+                </body>
+                </html>
+                """.formatted(
+                mallProperties.getPdf().getFontFamily(),
+                color, color,
+                safePlatform, safeTitle, contentHtml,
+                tagsStr.isEmpty() ? "" : "<div class=\"tags\"><strong>🏷 标签：</strong>" + tagsStr + "</div>",
+                dateStr
+        );
     }
 
     // ==================== Batch TXT ====================

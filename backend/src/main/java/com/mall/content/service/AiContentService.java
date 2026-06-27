@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mall.content.ai.AiChatClient;
+import com.mall.content.ai.dto.DetailImageSuggestion;
 import com.mall.content.ai.dto.MarketingCopyResult;
 import com.mall.content.ai.dto.ProductDescriptionResult;
 import com.mall.content.ai.prompt.DetailImagePrompts;
@@ -22,6 +23,8 @@ import com.mall.content.mapper.SysUserMapper;
 import com.mall.content.mapper.ProductImageMapper;
 import com.mall.content.mapper.ProductMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -46,15 +50,34 @@ public class AiContentService {
     private final MallProperties mallProperties;
     private final ProductService productService;
     private final AdminService adminService;
+    private final CacheManager cacheManager;
 
     @Transactional
     public ProductDescriptionResult generateProductDescription(
             Long productId, Authentication auth, List<Long> imageIds, String keywords
     ) {
+        return generateProductDescription(productId, auth, imageIds, keywords, false);
+    }
+
+    @Transactional
+    public ProductDescriptionResult generateProductDescription(
+            Long productId, Authentication auth, List<Long> imageIds, String keywords, boolean forceRegenerate
+    ) {
         checkAiQuota(auth, "description");
         long start = System.currentTimeMillis();
         Long userId = (Long) auth.getPrincipal();
         Product product = productService.requireAccessibleProduct(productId, auth);
+
+        // 缓存检查
+        String cacheKey = "desc:" + productId + ":" + Objects.hash(imageIds, keywords);
+        if (!forceRegenerate) {
+            Cache cache = cacheManager.getCache("aiResults");
+            if (cache != null) {
+                ProductDescriptionResult cached = cache.get(cacheKey, ProductDescriptionResult.class);
+                if (cached != null) return cached;
+            }
+        }
+
         List<ProductImage> images = loadSelectedImages(productId, imageIds);
         List<String> summaries = images.stream()
                 .map(img -> "file=" + img.getFileName() + "; sort=" + img.getSortOrder())
@@ -79,7 +102,12 @@ public class AiContentService {
             ProductDescriptionResult result = parseOrRepair(json, providerName, provider.getTextModel());
             persistDescription(product, result, keywords, json);
             logAi(userId, productId, "PRODUCT_DESC", null, model, "SUCCESS", keywords, null, start);
-            adminService.consumeQuota(userId);
+            if (!adminService.consumeQuota(userId)) {
+                throw new IllegalStateException("配额扣减失败，请确认仍有可用次数。");
+            }
+            // 写入缓存
+            Cache cache = cacheManager.getCache("aiResults");
+            if (cache != null) cache.put(cacheKey, result);
             return result;
         } catch (Exception ex) {
             logAi(userId, productId, "PRODUCT_DESC", null, model, "FAILED", keywords, ex.getMessage(), start);
@@ -91,6 +119,21 @@ public class AiContentService {
     public MarketingCopyResult generateMarketingCopy(
             Long productId, Authentication auth, MarketingPlatform platform, int variantCount
     ) {
+        return generateMarketingCopy(productId, auth, platform, variantCount, false, null);
+    }
+
+    @Transactional
+    public MarketingCopyResult generateMarketingCopy(
+            Long productId, Authentication auth, MarketingPlatform platform, int variantCount, boolean forceRegenerate
+    ) {
+        return generateMarketingCopy(productId, auth, platform, variantCount, forceRegenerate, null);
+    }
+
+    @Transactional
+    public MarketingCopyResult generateMarketingCopy(
+            Long productId, Authentication auth, MarketingPlatform platform, int variantCount,
+            boolean forceRegenerate, String scenario
+    ) {
         checkAiQuota(auth, "copy");
         long start = System.currentTimeMillis();
         Long userId = (Long) auth.getPrincipal();
@@ -99,13 +142,23 @@ public class AiContentService {
             throw new IllegalStateException("请先生成商品描述，再生成营销文案。");
         }
 
+        // 缓存检查
+        String cacheKey = "copy:" + productId + ":" + platform.name() + ":" + variantCount;
+        if (!forceRegenerate) {
+            Cache cache = cacheManager.getCache("aiResults");
+            if (cache != null) {
+                MarketingCopyResult cached = cache.get(cacheKey, MarketingCopyResult.class);
+                if (cached != null) return cached;
+            }
+        }
+
         String providerName = mallProperties.getAi().getRouting().getMarketingCopy();
         var provider = mallProperties.getAi().requireProvider(providerName);
         String model = provider.getTextModel();
 
         String prompt = MarketingCopyPrompts.buildMarketingCopyPrompt(
                 platform, product.getName(), product.getShortTitle(),
-                product.getSellingPoints(), product.getDetailContent(), variantCount
+                product.getSellingPoints(), product.getDetailContent(), variantCount, scenario
         );
 
         try {
@@ -116,7 +169,12 @@ public class AiContentService {
             persistMarketingCopies(productId, userId, platform, result);
             trimCopies(productId, 3); // 每个商品最多保留 3 条文案
             logAi(userId, productId, "MARKETING_COPY", platform.name(), model, "SUCCESS", platform.label(), null, start);
-            adminService.consumeQuota(userId);
+            if (!adminService.consumeQuota(userId)) {
+                throw new IllegalStateException("配额扣减失败，请确认仍有可用次数。");
+            }
+            // 写入缓存
+            Cache cache = cacheManager.getCache("aiResults");
+            if (cache != null) cache.put(cacheKey, result);
             return result;
         } catch (Exception ex) {
             logAi(userId, productId, "MARKETING_COPY", platform.name(), model, "FAILED", platform.label(), ex.getMessage(), start);
@@ -133,10 +191,30 @@ public class AiContentService {
             String sectionTitle, String sectionCopy,
             String visualDirection, String aspectRatio
     ) {
+        return generateDetailImage(productId, auth, sectionTitle, sectionCopy, visualDirection, aspectRatio, false);
+    }
+
+    @Transactional
+    public ProductImage generateDetailImage(
+            Long productId, Authentication auth,
+            String sectionTitle, String sectionCopy,
+            String visualDirection, String aspectRatio,
+            boolean forceRegenerate
+    ) {
         checkAiQuota(auth, "image");
         long start = System.currentTimeMillis();
         Long userId = (Long) auth.getPrincipal();
         Product product = productService.requireAccessibleProduct(productId, auth);
+
+        // 缓存检查
+        String cacheKey = "img:" + productId + ":" + Objects.hash(sectionTitle, visualDirection, aspectRatio);
+        if (!forceRegenerate) {
+            Cache cache = cacheManager.getCache("aiResults");
+            if (cache != null) {
+                ProductImage cached = cache.get(cacheKey, ProductImage.class);
+                if (cached != null) return cached;
+            }
+        }
 
         String providerName = mallProperties.getAi().getDefaultProvider();
         var provider = mallProperties.getAi().requireProvider(providerName);
@@ -161,13 +239,17 @@ public class AiContentService {
             } catch (Exception ignored) { /* 图片不可用则跳过 */ }
         }
 
+        // 从已保存的商品描述中提取文字密度判断
+        String imageTextDensity = extractTextDensity(product.getAiAnalysisRaw());
+
         String prompt = DetailImagePrompts.buildSectionImagePrompt(
                 product.getName(),
                 sectionTitle != null ? sectionTitle : "商品详情",
                 sectionCopy != null ? sectionCopy : product.getDetailContent(),
                 visualDirection != null ? visualDirection : "简洁高端电商风格，白底或浅色渐变背景，突出商品主体",
                 aspectRatio != null ? aspectRatio : "3:4",
-                !refImages.isEmpty()
+                !refImages.isEmpty(),
+                imageTextDensity
         );
 
         try {
@@ -215,7 +297,12 @@ public class AiContentService {
 
             logAi(userId, productId, "DETAIL_IMAGE", null, model, "SUCCESS",
                     "section=" + sectionTitle, null, start);
-            adminService.consumeQuota(userId);
+            if (!adminService.consumeQuota(userId)) {
+                throw new IllegalStateException("配额扣减失败，请确认仍有可用次数。");
+            }
+            // 写入缓存
+            Cache cache = cacheManager.getCache("aiResults");
+            if (cache != null) cache.put(cacheKey, image);
             return image;
         } catch (Exception ex) {
             logAi(userId, productId, "DETAIL_IMAGE", null,
@@ -347,6 +434,23 @@ public class AiContentService {
         return images;
     }
 
+    /**
+     * 从已保存的 AI 分析原始 JSON 中提取 imageTextDensity 字段。
+     */
+    private String extractTextDensity(String aiAnalysisRaw) {
+        if (aiAnalysisRaw == null || aiAnalysisRaw.isBlank()) return "moderate";
+        try {
+            var node = objectMapper.readTree(aiAnalysisRaw);
+            if (node.has("imageTextDensity")) {
+                String density = node.get("imageTextDensity").asText();
+                if ("minimal".equals(density) || "moderate".equals(density) || "rich".equals(density)) {
+                    return density;
+                }
+            }
+        } catch (Exception ignored) { /* fall through */ }
+        return "moderate";
+    }
+
     private void checkAiQuota(Authentication auth, String module) {
         Long userId = (Long) auth.getPrincipal();
         SysUser user = sysUserMapper.selectById(userId);
@@ -357,6 +461,76 @@ public class AiContentService {
             }
             throw new IllegalStateException("您没有使用该 AI 功能的权限，请联系管理员。");
         }
+    }
+
+    /**
+     * 一键填写详情图表单建议：AI 分析商品图片，推荐 sectionTitle / sectionCopy / visualDirection。
+     * 结果带缓存：同一商品相同图片组合 24h 内直接返回缓存。
+     */
+    public DetailImageSuggestion generateDetailImageSuggestions(
+            Long productId, Authentication auth, List<Long> imageIds
+    ) {
+        Long userId = (Long) auth.getPrincipal();
+        Product product = productService.requireAccessibleProduct(productId, auth);
+
+        // 缓存检查
+        String cacheKey = "sugg:" + productId + ":" + Objects.hash(imageIds);
+        Cache cache = cacheManager.getCache("aiResults");
+        if (cache != null) {
+            DetailImageSuggestion cached = cache.get(cacheKey, DetailImageSuggestion.class);
+            if (cached != null) return cached;
+        }
+
+        String providerName = mallProperties.getAi().getDefaultProvider();
+        var provider = mallProperties.getAi().requireProvider(providerName);
+        String visionModel = provider.getVisionModel();
+        if (visionModel == null || visionModel.isBlank()) {
+            throw new IllegalStateException("当前 AI 服务商未配置视觉模型。");
+        }
+
+        // 加载指定图片
+        List<ProductImage> images;
+        if (imageIds != null && !imageIds.isEmpty()) {
+            images = productImageMapper.selectBatchIds(imageIds);
+            images.removeIf(img -> !img.getProductId().equals(productId));
+        } else {
+            images = productImageMapper.selectList(
+                    new LambdaQueryWrapper<ProductImage>()
+                            .eq(ProductImage::getProductId, productId)
+                            .orderByAsc(ProductImage::getSortOrder)
+            );
+        }
+        if (images.isEmpty()) {
+            throw new IllegalArgumentException("请先上传商品图片");
+        }
+        List<String> base64Images = new ArrayList<>();
+        for (ProductImage img : images) {
+            try {
+                byte[] bytes = storageService.readFile(img.getFilePath());
+                base64Images.add("data:" + img.getMimeType() + ";base64,"
+                        + Base64.getEncoder().encodeToString(bytes));
+            } catch (Exception ignored) {}
+        }
+        if (base64Images.isEmpty()) {
+            throw new IllegalArgumentException("商品图片不可用");
+        }
+
+        String userPrompt = DetailImagePrompts.buildSuggestionPrompt(
+                product.getName(),
+                product.getDetailContent()
+        );
+
+        String systemPrompt = "你是资深电商视觉设计专家，擅长为商品设计详情页模块图。请严格按 JSON 格式输出。";
+
+        String raw = aiClient.generateStructuredJson(providerName, visionModel, systemPrompt, userPrompt, base64Images);
+        DetailImageSuggestion suggestion = aiClient.parseJson(raw, DetailImageSuggestion.class);
+        if (suggestion.getSectionTitle() == null) suggestion.setSectionTitle("");
+        if (suggestion.getSectionCopy() == null) suggestion.setSectionCopy("");
+        if (suggestion.getVisualDirection() == null) suggestion.setVisualDirection("");
+
+        // 写入缓存
+        if (cache != null) cache.put(cacheKey, suggestion);
+        return suggestion;
     }
 
     private void logAi(Long userId, Long productId, String taskType, String platform,

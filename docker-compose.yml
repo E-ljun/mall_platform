@@ -4,7 +4,7 @@ services:
     container_name: mall-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-mall123456}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-xyz567}
       MYSQL_DATABASE: mall_content
       TZ: Asia/Shanghai
     volumes:
@@ -34,7 +34,7 @@ services:
       DB_PORT: 3306
       DB_NAME: mall_content
       DB_USER: root
-      DB_PASSWORD: ${DB_PASSWORD:-mall123456}
+      DB_PASSWORD: ${DB_PASSWORD:-xyz567}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key-in-production}
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

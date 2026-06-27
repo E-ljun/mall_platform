@@ -16,6 +16,7 @@ public class MallProperties {
     private Storage storage = new Storage();
     private Cors cors = new Cors();
     private Ai ai = new Ai();
+    private Pdf pdf = new Pdf();
 
     @Data
     public static class Jwt {
@@ -63,6 +64,15 @@ public class MallProperties {
         private String visionModel;
         private String textModel;
         private String imageModel;
+    }
+
+    @Data
+    public static class Pdf {
+        private String fontPaths = "C:/Windows/Fonts/msyh.ttc,C:/Windows/Fonts/simsun.ttc,"
+                + "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc,"
+                + "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc,"
+                + "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc";
+        private String fontFamily = "SimSun";
     }
 
     @Data

@@ -1,10 +1,15 @@
 package com.mall.content.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mall.content.domain.entity.Product;
+import com.mall.content.domain.entity.ProductImage;
 import com.mall.content.domain.entity.SysUser;
 import com.mall.content.domain.entity.SystemAnnouncement;
 import com.mall.content.domain.entity.UserQuotaLog;
+import com.mall.content.mapper.ProductImageMapper;
+import com.mall.content.mapper.ProductMapper;
 import com.mall.content.mapper.SysUserMapper;
 import com.mall.content.mapper.SystemAnnouncementMapper;
 import com.mall.content.mapper.UserQuotaLogMapper;
@@ -14,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +32,9 @@ public class AdminService {
     private final SysUserMapper sysUserMapper;
     private final UserQuotaLogMapper quotaLogMapper;
     private final SystemAnnouncementMapper announcementMapper;
+    private final ProductMapper productMapper;
+    private final ProductImageMapper productImageMapper;
+    private final StorageService storageService;
 
     // ==================== 用户管理 ====================
 
@@ -78,6 +88,7 @@ public class AdminService {
     public SysUser setQuota(Long userId, int quotaTotal, Authentication auth) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) throw new IllegalArgumentException("用户不存在");
+        if ("ADMIN".equals(user.getRole())) throw new IllegalArgumentException("管理员配额不可修改");
 
         Long adminId = (Long) auth.getPrincipal();
         int delta = quotaTotal - (user.getQuotaTotal() != null ? user.getQuotaTotal() : 0);
@@ -99,6 +110,7 @@ public class AdminService {
     public SysUser addQuota(Long userId, int amount, Authentication auth) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) throw new IllegalArgumentException("用户不存在");
+        if ("ADMIN".equals(user.getRole())) throw new IllegalArgumentException("管理员配额不可修改");
 
         Long adminId = (Long) auth.getPrincipal();
         user.setQuotaTotal((user.getQuotaTotal() != null ? user.getQuotaTotal() : 0) + amount);
@@ -120,6 +132,7 @@ public class AdminService {
     public SysUser setPermissions(Long userId, List<String> permissions) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) throw new IllegalArgumentException("用户不存在");
+        if ("ADMIN".equals(user.getRole())) throw new IllegalArgumentException("管理员权限不可修改");
         final String json;
         if (permissions == null || permissions.isEmpty()) {
             // 空数组 → 存储为 "[]" 表示无任何权限（与 null 区分，null=全部可用）
@@ -169,13 +182,12 @@ public class AdminService {
         return false;
     }
 
-    @Transactional
-    public void consumeQuota(Long userId) {
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) return;
-        if (user.getQuotaTotal() == null || user.getQuotaTotal() == -1) return; // 不限
-        user.setQuotaUsed((user.getQuotaUsed() != null ? user.getQuotaUsed() : 0) + 1);
-        sysUserMapper.updateById(user);
+    /**
+     * 原子扣减配额。使用单条 UPDATE 保证并发安全。
+     * @return true=扣减成功，false=配额不足或用户不存在
+     */
+    public boolean consumeQuota(Long userId) {
+        return sysUserMapper.consumeQuotaAtomic(userId) > 0;
     }
 
     // ==================== 注册限制 ====================
@@ -224,6 +236,41 @@ public class AdminService {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null) throw new IllegalArgumentException("用户不存在");
         return user;
+    }
+
+    // ==================== 回收站 ====================
+
+    public Map<String, Object> listDeletedProducts(int page, int size) {
+        // 使用自定义 SQL 绕过 @TableLogic
+        Page<Product> pg = productMapper.selectAllDeleted(new Page<>(page, size));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("records", pg.getRecords());
+        result.put("total", pg.getTotal());
+        result.put("page", pg.getCurrent());
+        result.put("size", pg.getSize());
+        return result;
+    }
+
+    @Transactional
+    public void restoreProduct(Long productId) {
+        Product product = productMapper.selectDeletedById(productId);
+        if (product == null) throw new IllegalArgumentException("商品不存在或不在回收站中");
+        productMapper.restoreDeleted(productId);
+    }
+
+    @Transactional
+    public void purgeProduct(Long productId) {
+        Product product = productMapper.selectDeletedById(productId);
+        if (product == null) throw new IllegalArgumentException("商品不存在或不在回收站中");
+        // 物理删除图片文件
+        List<ProductImage> images = productImageMapper.selectList(
+                new LambdaQueryWrapper<ProductImage>().eq(ProductImage::getProductId, productId));
+        for (ProductImage img : images) {
+            try { storageService.deleteFile(img.getFilePath()); } catch (Exception ignored) {}
+            productImageMapper.deleteById(img.getId());
+        }
+        // 物理删除商品
+        productMapper.deletePhysically(productId);
     }
 
     public List<UserQuotaLog> getQuotaLogs(Long userId) {

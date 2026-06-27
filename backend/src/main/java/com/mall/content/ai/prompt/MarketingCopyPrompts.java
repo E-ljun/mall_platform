@@ -19,6 +19,49 @@ public final class MarketingCopyPrompts {
             String detailContent,
             int variantCount
     ) {
+        return buildMarketingCopyPrompt(platform, productName, shortTitle, sellingPointsJson, detailContent, variantCount, null);
+    }
+
+    public static String buildMarketingCopyPrompt(
+            MarketingPlatform platform,
+            String productName,
+            String shortTitle,
+            String sellingPointsJson,
+            String detailContent,
+            int variantCount,
+            String scenario
+    ) {
+        String scenarioGuide = "";
+        if (scenario != null && !scenario.isBlank()) {
+            scenarioGuide = switch (scenario.trim()) {
+                case "618" -> """
+                        营销场景：618大促
+                        - 强调"全年最低价""错过等一年"等紧迫感话术
+                        - 突出平台满减、跨店优惠等促销机制
+                        - 使用倒计时、限量等稀缺性暗示
+                        """;
+                case "double11" -> """
+                        营销场景：双11狂欢
+                        - 双11全球狂欢节氛围，强调"年度必买清单"
+                        - 突出预售权益、定金膨胀、前N名免单
+                        - 用"疯抢""爆款"等点燃购物欲
+                        """;
+                case "new_launch" -> """
+                        营销场景：新品首发
+                        - 突出"独家首发""限量首发"的新鲜感
+                        - 强调创新点、升级亮点、首发专属福利
+                        - 用"抢先体验""第一时间拥有"制造期待
+                        """;
+                case "clearance" -> """
+                        营销场景：清仓特卖
+                        - 强调"清仓价""历史最低""卖完下架"
+                        - 突出性价比，弱化包装，强化实惠感
+                        - 催促下单："库存告急""手慢无"
+                        """;
+                default -> "";
+            };
+        }
+
         String styleGuide = switch (platform) {
             case XIAOHONGSHU -> """
                     平台风格：小红书
@@ -53,6 +96,7 @@ public final class MarketingCopyPrompts {
         return String.join("\n",
                 "你是资深电商带货文案策划。根据商品信息生成营销文案。",
                 "仅返回严格 JSON，不要 markdown。",
+                scenarioGuide.isEmpty() ? "" : scenarioGuide,
                 styleGuide,
                 "",
                 "商品名称：" + productName,
@@ -75,6 +119,6 @@ public final class MarketingCopyPrompts {
                   ]
                 }
                 """.formatted(platform.name())
-        );
+        ).replace("\n\n\n", "\n\n"); // 去掉空行
     }
 }

@@ -37,10 +37,10 @@ import { ElMessage } from 'element-plus'
 import http, { type ApiResponse } from '../api/http'
 
 const stats = ref([
-  { label: '注册用户', value: 0, color: '#667eea' },
-  { label: '待审核', value: 0, color: '#e6a23c' },
-  { label: '启用用户', value: 0, color: '#67c23a' },
-  { label: '禁用用户', value: 0, color: '#f56c6c' },
+  { label: '注册用户', value: 0, color: 'var(--accent)' },
+  { label: '待审核', value: 0, color: 'var(--warning)' },
+  { label: '启用用户', value: 0, color: 'var(--success)' },
+  { label: '禁用用户', value: 0, color: 'var(--coral)' },
 ])
 
 const announcement = ref<any>(null)
@@ -51,7 +51,7 @@ async function load() {
   try {
     const { data } = await http.get<ApiResponse<any>>('/admin/users', { params: { page: 1, size: 1 } })
     stats.value[0].value = data.data.currentCount || data.data.total
-  } catch { /* */ }
+  } catch { stats.value[0].value = 0 }
   try {
     const [pendingRes, activeRes, disabledRes] = await Promise.all([
       http.get<ApiResponse<any>>('/admin/users', { params: { page: 1, size: 1, status: 'PENDING' } }),
@@ -61,12 +61,12 @@ async function load() {
     stats.value[1].value = pendingRes.data.data.total
     stats.value[2].value = activeRes.data.data.total
     stats.value[3].value = disabledRes.data.data.total
-  } catch { /* */ }
+  } catch { stats.value[1].value = 0; stats.value[2].value = 0; stats.value[3].value = 0 }
 
   try {
     const { data } = await http.get<ApiResponse<any>>('/admin/announcement')
     announcement.value = data.data
-  } catch { /* */ }
+  } catch { announcement.value = null }
 }
 
 async function saveAnnouncement() {
@@ -81,19 +81,24 @@ onMounted(load)
 
 <style scoped>
 .admin-dashboard { max-width: 1200px; }
-.admin-dashboard h3 { margin-top: 0; }
+.admin-dashboard h3 { margin-top: 0; color: var(--text-primary); font-family: var(--font-display); }
 
 .stat-row { margin-bottom: 20px; }
 .stat-card {
-  background: #fff;
-  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   padding: 24px;
   border-top: 3px solid var(--accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: all 0.3s var(--ease-out);
 }
-.stat-num { font-size: 32px; font-weight: 700; color: var(--accent); }
-.stat-label { color: #999; font-size: 13px; margin-top: 4px; }
+.stat-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.stat-num { font-size: 32px; font-weight: 700; color: var(--accent-light); font-family: var(--font-display); }
+.stat-label { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
 
-.mt { margin-top: 20px; border-radius: 12px; }
-.ann-content { padding: 8px 0; font-size: 14px; color: #333; line-height: 1.8; white-space: pre-wrap; }
+.mt { margin-top: 20px; border-radius: var(--radius-lg); }
+.ann-content { padding: 8px 0; font-size: 14px; color: var(--text-primary); line-height: 1.8; white-space: pre-wrap; }
 </style>

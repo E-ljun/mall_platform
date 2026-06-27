@@ -20,4 +20,7 @@ public class ProductDescriptionResult {
     private List<String> targetAudience = new ArrayList<>();
     private List<String> usageScenarios = new ArrayList<>();
     private List<String> complianceWarnings = new ArrayList<>();
+
+    /** 判断营销图上需要多少文字：minimal(1-2句) / moderate(3-4条) / rich(较多文字) */
+    private String imageTextDensity;
 }

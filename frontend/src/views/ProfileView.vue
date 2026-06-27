@@ -184,7 +184,7 @@ async function onAvatarChange(e: Event) {
       localStorage.setItem('avatar', data.data)
       ElMessage.success('头像已更新')
     }
-  } catch { /* handled */ }
+  } catch { ElMessage.error('头像上传失败，请重试') }
 }
 
 async function loadProfile() {
@@ -196,7 +196,7 @@ async function loadProfile() {
       phone: data.data.phone || '',
       email: data.data.email || '',
     }
-  } catch { /* handled */ }
+  } catch { ElMessage.error('加载个人信息失败') }
 }
 
 async function saveProfile() {
@@ -211,7 +211,7 @@ async function saveProfile() {
     userStore.nickname = editForm.value.nickname
     localStorage.setItem('nickname', editForm.value.nickname)
     ElMessage.success('个人信息已更新')
-  } catch { /* handled */ } finally { editLoading.value = false }
+  } catch { ElMessage.error('保存个人信息失败，请重试') } finally { editLoading.value = false }
 }
 
 async function changePassword() {
@@ -222,7 +222,7 @@ async function changePassword() {
     await http.put('/auth/password', { oldPassword: pwdForm.value.oldPassword, newPassword: pwdForm.value.newPassword })
     ElMessage.success('密码修改成功')
     pwdForm.value = { oldPassword: '', newPassword: '', confirmPwd: '' }
-  } catch { /* handled */ } finally { pwdLoading.value = false }
+  } catch { ElMessage.error('密码修改失败，请检查当前密码是否正确') } finally { pwdLoading.value = false }
 }
 
 async function deleteAccount() {
@@ -238,7 +238,7 @@ async function deleteAccount() {
     ElMessage.success('账号已注销')
     userStore.logout()
     router.push('/login')
-  } catch { /* handled */ }
+  } catch { ElMessage.error('账号注销失败，请稍后重试') }
 }
 
 onMounted(async () => {
@@ -246,30 +246,34 @@ onMounted(async () => {
   try {
     const { data } = await http.get<ApiResponse<any>>('/admin/announcement')
     if (data.data) announcement.value = data.data
-  } catch { /* no announcement */ }
+  } catch { announcement.value = null }
 })
 </script>
 
 <style scoped>
 .profile-page { max-width: 1000px; }
-.info-card { border-radius: 12px; margin-bottom: 20px; }
-.profile-header { text-align: center; padding: 20px 0; border-bottom: 1px solid #f0f0f0; margin-bottom: 16px; }
+.info-card { border-radius: var(--radius-lg); margin-bottom: 20px; }
+.profile-header {
+  text-align: center; padding: 20px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
 .avatar-wrap {
   position: relative; display: inline-block; cursor: pointer; margin-bottom: 12px;
 }
 .avatar-wrap:hover .avatar-overlay { opacity: 1; }
-.profile-avatar { background: linear-gradient(135deg, #667eea, #764ba2); }
+.profile-avatar { background: linear-gradient(135deg, var(--accent-dark), var(--accent)); }
 .avatar-overlay {
   position: absolute; inset: 0; border-radius: 50%;
   background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center;
   opacity: 0; transition: opacity 0.3s; font-size: 24px; pointer-events: none;
 }
-.profile-header h3 { margin: 8px 0 6px; }
+.profile-header h3 { margin: 8px 0 6px; color: var(--text-primary); }
 .status-row { display: flex; justify-content: center; margin-bottom: 4px; }
 .info-table { margin-top: 12px; }
 .quota-info { display: flex; align-items: center; gap: 8px; }
-.quota-text { font-size: 12px; white-space: nowrap; min-width: 80px; }
-.action-card { border-radius: 12px; margin-bottom: 20px; }
-.announcement-content { padding: 8px 0; font-size: 14px; color: #333; line-height: 1.8; white-space: pre-wrap; }
-.announcement-time { font-size: 12px; color: #999; margin-top: 8px; }
+.quota-text { font-size: 12px; white-space: nowrap; min-width: 80px; color: var(--text-secondary); }
+.action-card { border-radius: var(--radius-lg); margin-bottom: 20px; }
+.announcement-content { padding: 8px 0; font-size: 14px; color: var(--text-primary); line-height: 1.8; white-space: pre-wrap; }
+.announcement-time { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
 </style>
