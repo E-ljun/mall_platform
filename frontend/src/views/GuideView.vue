@@ -240,25 +240,47 @@ function selectBg(idx: number) {
   selectedBg.value = selectedBg.value === idx ? null : idx
 }
 
+// HTTP 环境兼容的复制函数（navigator.clipboard 只在 HTTPS/localhost 下可用）
+function copyToClipboard(text: string, successMsg: string) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => ElMessage.success(successMsg))
+      .catch(() => fallbackCopy(text, successMsg))
+  } else {
+    fallbackCopy(text, successMsg)
+  }
+}
+
+function fallbackCopy(text: string, successMsg: string) {
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px'
+  document.body.appendChild(ta)
+  ta.focus(); ta.select()
+  try {
+    document.execCommand('copy')
+    ElMessage.success(successMsg)
+  } catch {
+    ElMessage.info(text)
+  }
+  document.body.removeChild(ta)
+}
+
 function copyBgPrompt() {
   if (selectedBg.value === null) return
-  navigator.clipboard.writeText(backgrounds[selectedBg.value].promptAddon)
-  ElMessage.success('背景描述已复制')
+  copyToClipboard(backgrounds[selectedBg.value].promptAddon, '背景描述已复制')
 }
 
 function copyField(event: MouseEvent, text: string) {
   event.stopPropagation()
-  navigator.clipboard.writeText(text).then(() => ElMessage.success('已复制：' + text.slice(0, 30) + (text.length > 30 ? '...' : '')))
-    .catch(() => ElMessage.info(text))
+  copyToClipboard(text, '已复制：' + text.slice(0, 30) + (text.length > 30 ? '...' : ''))
 }
 
 function copyTemplate(tpl: typeof templates[0]) {
   // 如果用户正在选中文字则不触发复制
   const selection = window.getSelection()
   if (selection && selection.toString().trim()) return
-  const text = `模块标题：${tpl.sectionTitle}\n文案要点：${tpl.sectionCopy}\n画面描述：${tpl.visualDirection}\n比例：${tpl.aspectRatio}`
-  navigator.clipboard.writeText(text).then(() => ElMessage.success('模板已复制，去商品编辑页粘贴即可'))
-    .catch(() => ElMessage.info(text))
+  const text = '模块标题：' + tpl.sectionTitle + '\n文案要点：' + tpl.sectionCopy + '\n画面描述：' + tpl.visualDirection + '\n比例：' + tpl.aspectRatio
+  copyToClipboard(text, '模板已复制，去商品编辑页粘贴即可')
 }
 
 // ---- 比例 ----

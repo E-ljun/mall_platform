@@ -83,15 +83,18 @@ public class ExportService {
                 }
             }
             if (!fontLoaded) {
-                throw new IllegalStateException("PDF 中文字体未安装，请在 Dockerfile 中安装 font-noto-cjk 或设置 mall.pdf.font-paths");
+                // 字体缺失是服务器配置问题，不应返回 403
+                throw new RuntimeException("PDF 中文字体未安装，请联系管理员安装字体");
             }
 
             builder.withHtmlContent(html, null);
             builder.toStream(os);
             builder.run();
             return os.toByteArray();
+        } catch (RuntimeException e) {
+            throw e; // 直接抛出，保留原始异常类型
         } catch (Exception e) {
-            throw new IllegalStateException("PDF 生成失败: " + e.getMessage(), e);
+            throw new RuntimeException("PDF 生成失败: " + e.getMessage(), e);
         }
     }
 
