@@ -68,6 +68,26 @@ public class CopyLibraryService {
             lib.setProductImage(product.getMainImageUrl());
         }
         copyLibraryMapper.insert(lib);
+
+        // 确保分组有锚点标记条目（防止所有条目移出后分组消失）
+        if (lib.getGroupName() != null && !lib.getGroupName().isBlank() && !"默认".equals(lib.getGroupName())) {
+            long markerCount = copyLibraryMapper.selectCount(
+                new LambdaQueryWrapper<CopyLibrary>()
+                    .eq(CopyLibrary::getUserId, userId)
+                    .eq(CopyLibrary::getGroupName, lib.getGroupName())
+                    .eq(CopyLibrary::getContent, "")
+            );
+            if (markerCount == 0) {
+                CopyLibrary marker = new CopyLibrary();
+                marker.setUserId(userId);
+                marker.setTitle(lib.getGroupName());
+                marker.setPlatform("OTHER");
+                marker.setContent("");
+                marker.setGroupName(lib.getGroupName());
+                copyLibraryMapper.insert(marker);
+            }
+        }
+
         return lib;
     }
 

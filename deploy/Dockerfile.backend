@@ -7,7 +7,7 @@ RUN mvn -q -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN apk add --no-cache tzdata && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+RUN apk add --no-cache tzdata font-noto-cjk && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 COPY --from=build /app/target/mall-content-platform-*.jar app.jar
 RUN mkdir -p /app/storage
 ENV SPRING_PROFILES_ACTIVE=prod

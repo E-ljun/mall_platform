@@ -33,12 +33,24 @@
             <span class="tpl-name">{{ tpl.name }}</span>
           </div>
           <div class="tpl-info">
-            <div class="tpl-field"><label>标题</label><span>{{ tpl.sectionTitle }}</span></div>
-            <div class="tpl-field"><label>文案</label><span>{{ tpl.sectionCopy }}</span></div>
-            <div class="tpl-field"><label>画面</label><span>{{ tpl.visualDirection }}</span></div>
+            <div class="tpl-field" @click.stop="copyField($event, tpl.sectionTitle)">
+              <label>标题</label>
+              <span :title="tpl.sectionTitle">{{ tpl.sectionTitle }}</span>
+              <button class="tpl-copy-btn" title="复制此项">📋</button>
+            </div>
+            <div class="tpl-field" @click.stop="copyField($event, tpl.sectionCopy)">
+              <label>文案</label>
+              <span :title="tpl.sectionCopy">{{ tpl.sectionCopy }}</span>
+              <button class="tpl-copy-btn" title="复制此项">📋</button>
+            </div>
+            <div class="tpl-field" @click.stop="copyField($event, tpl.visualDirection)">
+              <label>画面</label>
+              <span :title="tpl.visualDirection">{{ tpl.visualDirection }}</span>
+              <button class="tpl-copy-btn" title="复制此项">📋</button>
+            </div>
             <div class="tpl-meta">
               <el-tag size="small">{{ tpl.aspectRatio }}</el-tag>
-              <span class="tpl-copy-hint">点击复制 →</span>
+              <span class="tpl-copy-hint">点击行复制 → 点击卡片复制全部</span>
             </div>
           </div>
         </div>
@@ -234,7 +246,16 @@ function copyBgPrompt() {
   ElMessage.success('背景描述已复制')
 }
 
+function copyField(event: MouseEvent, text: string) {
+  event.stopPropagation()
+  navigator.clipboard.writeText(text).then(() => ElMessage.success('已复制：' + text.slice(0, 30) + (text.length > 30 ? '...' : '')))
+    .catch(() => ElMessage.info(text))
+}
+
 function copyTemplate(tpl: typeof templates[0]) {
+  // 如果用户正在选中文字则不触发复制
+  const selection = window.getSelection()
+  if (selection && selection.toString().trim()) return
   const text = `模块标题：${tpl.sectionTitle}\n文案要点：${tpl.sectionCopy}\n画面描述：${tpl.visualDirection}\n比例：${tpl.aspectRatio}`
   navigator.clipboard.writeText(text).then(() => ElMessage.success('模板已复制，去商品编辑页粘贴即可'))
     .catch(() => ElMessage.info(text))
@@ -341,15 +362,32 @@ const tips = [
 .tpl-name { font-size: 20px; font-weight: 700; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
 .tpl-info { padding: 14px 16px; }
 .tpl-field {
-  display: flex; gap: 8px; margin-bottom: 6px; font-size: 12px;
+  display: flex; gap: 6px; margin-bottom: 6px; font-size: 12px; align-items: flex-start;
+  cursor: pointer; padding: 4px 6px; border-radius: 6px;
+  transition: background 0.2s var(--ease-out);
+  user-select: text;
 }
+.tpl-field:hover { background: rgba(91,138,138,0.06); }
 .tpl-field label {
   color: var(--accent-teal); font-weight: 600; min-width: 36px; flex-shrink: 0;
+  user-select: none;
 }
-.tpl-field span { color: var(--text-secondary); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-field span {
+  color: var(--text-secondary); line-height: 1.5;
+  flex: 1; word-break: break-all;
+}
+.tpl-copy-btn {
+  flex-shrink: 0; border: none; background: transparent;
+  font-size: 14px; cursor: pointer; opacity: 0; padding: 0 2px;
+  transition: opacity 0.2s var(--ease-out);
+  user-select: none;
+}
+.tpl-field:hover .tpl-copy-btn { opacity: 0.7; }
+.tpl-copy-btn:hover { opacity: 1 !important; }
 .tpl-meta {
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle);
+  user-select: none;
 }
 .tpl-copy-hint { font-size: 11px; color: var(--accent-teal); }
 

@@ -68,11 +68,12 @@ public class MallProperties {
 
     @Data
     public static class Pdf {
-        private String fontPaths = "C:/Windows/Fonts/msyh.ttc,C:/Windows/Fonts/simsun.ttc,"
-                + "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc,"
+        private String fontPaths = "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc,"
+                + "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc,"
                 + "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc,"
-                + "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc";
-        private String fontFamily = "SimSun";
+                + "C:/Windows/Fonts/msyh.ttc,"
+                + "C:/Windows/Fonts/simsun.ttc";
+        private String fontFamily = "Noto Sans CJK SC";
     }
 
     @Data

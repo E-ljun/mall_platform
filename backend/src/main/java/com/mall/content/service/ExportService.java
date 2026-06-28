@@ -83,8 +83,7 @@ public class ExportService {
                 }
             }
             if (!fontLoaded) {
-                // 尝试用系统默认，中文可能乱码但至少不报错
-                builder.useFont(new java.io.File("."), fontFamily);
+                throw new IllegalStateException("PDF 中文字体未安装，请在 Dockerfile 中安装 font-noto-cjk 或设置 mall.pdf.font-paths");
             }
 
             builder.withHtmlContent(html, null);
