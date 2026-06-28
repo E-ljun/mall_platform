@@ -7,6 +7,8 @@ CREATE TABLE sys_user (
     username        VARCHAR(64)  NOT NULL UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     nickname        VARCHAR(64)  NOT NULL DEFAULT '',
+    phone           VARCHAR(32)  DEFAULT NULL COMMENT '手机号',
+    email           VARCHAR(128) DEFAULT NULL COMMENT '邮箱',
     avatar          VARCHAR(512) DEFAULT NULL COMMENT '头像URL',
     role            VARCHAR(16)  NOT NULL DEFAULT 'USER' COMMENT 'USER | ADMIN',
     status          VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING=待审核 | ACTIVE=正常 | DISABLED=禁用',
