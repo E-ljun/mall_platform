@@ -15,8 +15,7 @@
       </el-form>
     </el-card>
 
-    <el-table :data="products" v-loading="loading" @selection-change="onSelect">
-      <el-table-column type="selection" width="50" />
+    <el-table :data="products" v-loading="loading">
       <el-table-column prop="name" label="名称" min-width="140" />
       <el-table-column prop="price" label="价格" width="100" />
       <el-table-column prop="stock" label="库存" width="80" />
@@ -28,23 +27,12 @@
           <el-tag size="small" type="info">{{ row.ownerUsername || '未知' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="100" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="viewProduct(row.id)">查看</el-button>
-          <el-popconfirm title="确定删除此商品？" @confirm="deleteOne(row.id)">
-            <template #reference>
-              <el-button link type="danger" size="small">删除</el-button>
-            </template>
-          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
-
-    <!-- Batch operations bar -->
-    <div v-if="selectedRows.length > 0" style="margin-bottom:12px;display:flex;align-items:center;gap:12px;padding:8px 16px;background:var(--bg-surface);border:1px solid var(--accent);border-radius:var(--radius-md);">
-      <span style="color:var(--text-secondary);">已选 <strong style="color:var(--accent);">{{ selectedRows.length }}</strong> 项</span>
-      <el-button type="danger" plain size="small" @click="confirmAdminBatchDelete">批量删除</el-button>
-    </div>
 
     <!-- 商品详情弹窗 -->
     <el-dialog v-model="productVisible" title="商品详情" width="600px">
@@ -78,7 +66,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import http, { type ApiResponse } from '../api/http'
 
 interface Product {
@@ -123,37 +111,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-// ---- Selection & Delete ----
-const selectedRows = ref<any[]>([])
-
-function onSelect(rows: any[]) {
-  selectedRows.value = rows
-}
-
-async function deleteOne(id: number) {
-  try {
-    await http.delete(`/products/${id}`)
-    ElMessage.success('商品已删除')
-    await load()
-  } catch { /* error shown by interceptor */ }
-}
-
-async function confirmAdminBatchDelete() {
-  if (selectedRows.value.length === 0) return
-  try {
-    await ElMessageBox.confirm(
-      `确定删除选中的 ${selectedRows.value.length} 个商品？仅能删除自己创建的商品。`,
-      '批量删除',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
-    )
-    const ids = selectedRows.value.map((r: any) => r.id)
-    await http.post('/products/batch-delete', { ids })
-    ElMessage.success('删除操作已完成')
-    selectedRows.value = []
-    await load()
-  } catch { /* user cancelled or error */ }
 }
 
 onMounted(load)

@@ -481,6 +481,11 @@ html, body, #app {
   box-shadow: 0 0 0 1px var(--accent) inset,
               0 0 12px var(--accent-glow) !important;
 }
+.el-select__wrapper { font-family: var(--font-body); }
+.el-select-dropdown { font-family: var(--font-body); }
+.el-select-dropdown__item { font-family: var(--font-body); font-size: 14px; }
+/* 修复 select 下拉箭头 Unicode 乱码 */
+.el-select__caret { font-family: "element-icons", "Microsoft YaHei", sans-serif !important; }
 
 /* Dropdown / Popover */
 .el-popper.is-dark {
