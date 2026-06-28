@@ -7,7 +7,7 @@ RUN mvn -q -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-RUN apt-get update -qq && apt-get install -y -qq fonts-noto-cjk tzdata 2>&1 | tail -1 \
+RUN apt-get update -qq && apt-get install -y -qq fonts-wqy-microhei tzdata 2>&1 | tail -1 \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/target/mall-content-platform-*.jar app.jar
